@@ -1,3 +1,4 @@
+# browser_utils.py
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -6,24 +7,34 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 import time
 
-
 def setup_browser():
+    """Initialisiert und konfiguriert den Chrome WebDriver."""
     options = Options()
-    # options.add_argument("--headless=new")
+    # options.add_argument("--headless=new") # Optional: Für Headless-Betrieb
     options.add_argument("--disable-gpu")
     options.add_argument("--ignore-certificate-errors")
-    options.add_argument("--log-level=3")
+    options.add_argument("--log-level=3") # Weniger WebDriver-Logs
     options.add_argument("--window-size=1920,1080")
+    # Stelle sicher, dass chromedriver.exe im PATH oder im gleichen Verzeichnis ist
     return webdriver.Chrome(service=Service("chromedriver.exe"), options=options)
 
+class Browser:
+    """Kapselt Browser-spezifische Operationen mit Selenium WebDriver."""
 
-def sicher_warten(driver, locator, timeout=10, sichtbar=True, mehrere=False):
-    if isinstance(locator, str):
-        locator = (By.XPATH, locator)
-    wait = WebDriverWait(driver, timeout)
-    from fritz_steps import check_login_state
+    def __init__(self, driver: webdriver.Chrome):
+        if not isinstance(driver, webdriver.Chrome):
+            raise TypeError("Der übergebene Treiber muss eine Instanz von selenium.webdriver.Chrome sein.")
+        self.driver = driver
 
-    for versuch in range(2):  # max 2 Versuche: normal + nach Re-Login
+    def sicher_warten(self, locator, timeout=10, sichtbar=True, mehrere=False):
+        """
+        Wartet sicher auf ein Element oder Elemente.
+        Locator kann ein (By.XPATH, "xpath_string") Tupel oder ein reiner XPath-String sein.
+        """
+        if isinstance(locator, str):
+            locator = (By.XPATH, locator) # Standardmäßig XPath verwenden
+
+        wait = WebDriverWait(self.driver, timeout)
         try:
             if mehrere:
                 if sichtbar:
@@ -36,28 +47,56 @@ def sicher_warten(driver, locator, timeout=10, sichtbar=True, mehrere=False):
                 else:
                     return wait.until(EC.presence_of_element_located(locator))
         except Exception as e:
-            if check_login_state(driver):
-                print("🔁 Wiederhole warten nach Re-Login...")
-                continue
-            raise Exception(f"❌ Fehler beim Warten auf Element: {locator}")
-    raise Exception(f"❌ Fehler beim Warten auf Element: {locator}")
+            # Hier keine Fritzbox-spezifische Login-Prüfung, da dies eine generische Browser-Klasse ist.
+            # Die Login-Prüfung erfolgt in der FritzBox-Klasse, die diese Browser-Methoden nutzt.
+            raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden): {e}")
 
-def klicken(driver, xpath, timeout=15, versuche=3):
-    for i in range(versuche):
-        try:
-            element = sicher_warten(driver, xpath, timeout)
+    def klicken(self, xpath, timeout=15, versuche=3):
+        """
+        Klickt auf ein Element, versucht bei Fehlschlag JavaScript-Klick.
+        Gibt True bei Erfolg, False bei Fehlschlag zurück.
+        """
+        for i in range(versuche):
             try:
-                element.click()
-                return True
+                element = self.sicher_warten(xpath, timeout)
+                try:
+                    element.click()
+                    return True
+                except Exception as e:
+                    # Direkter Klick fehlgeschlagen, versuche JavaScript-Klick
+                    print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}) für {xpath}: {e}")
+                    self.driver.execute_script("arguments[0].click();", element)
+                    return True # JavaScript-Klick war (wahrscheinlich) erfolgreich
             except Exception as e:
-                print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}): {e}")
-                driver.execute_script("arguments[0].click();", element)
-                return True
+                print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1}): {e}")
+                time.sleep(1) # Kurze Pause vor dem nächsten Versuch
+        print(f"❌ Element {xpath} nicht klickbar nach {versuche} Versuchen.")
+        return False
+
+    def schreiben(self, xpath, text, timeout=30):
+        """Schreibt Text in ein Feld."""
+        try:
+            element = self.sicher_warten(xpath, timeout)
+            element.send_keys(text)
+            return True
         except Exception as e:
-            time.sleep(1)
-    print(f"❌ Element nicht klickbar nach {versuche} Versuchen: {xpath}")
-    return False
+            print(f"❌ Fehler beim Schreiben in {xpath}: {e}")
+            return False
 
+    def get_url(self, url):
+        """Navigiert zu einer URL."""
+        try:
+            self.driver.get(url)
+            return True
+        except Exception as e:
+            print(f"❌ Fehler beim Navigieren zu {url}: {e}")
+            return False
 
-def schreiben(driver, xpath, text, timeout=30):
-    sicher_warten(driver, xpath, timeout).send_keys(text)
+    def quit(self):
+        """Schließt den Browser."""
+        if self.driver:
+            print("🌐 Browser wird geschlossen.")
+            self.driver.quit()
+            self.driver = None # Setze den Driver auf None, um weitere Operationen zu verhindern
+            return True
+        return False
