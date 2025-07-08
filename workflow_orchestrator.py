@@ -123,7 +123,7 @@ class WorkflowOrchestrator:
                 perform_update = False
                 perform_reset = False
 
-                if self.fritzbox.box_model == "UNKNOWN":
+                if self.fritzbox.box_model == "UNKNOWN" or self.fritzbox.box_model is None:
                     print("⚠️ Box-Modell unbekannt. Keine spezifische Firmware-Logik anwendbar.")
                     # Hier könnte man den Benutzer fragen, ob er ein generisches Update/Reset möchte
                     if input("Möchten Sie trotzdem ein Update/Reset versuchen? (j/n): ").lower() == 'j':
