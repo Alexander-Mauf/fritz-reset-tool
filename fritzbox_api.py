@@ -137,52 +137,88 @@ class FritzBox:
             print("ℹ️ Keine Sprachauswahl erkannt oder konnte nicht verarbeitet werden.")
         return False
 
-    def login(self, password: str, force_reload=False):
+    def is_main_menu_loaded_and_ready(self, timeout=5):
+        """
+        Prüft, ob die Hauptmenüstruktur der FritzBox geladen und interaktiv ist.
+        Sucht nach Schlüssel-Menüpunkten wie WLAN, System etc.
+        """
+        menu_xpaths = [
+            '//*[@id="wlan"]',  # WLAN Menüpunkt
+            '//*[@id="sys"]',  # System Menüpunkt
+            '//*[@id="internet"]',  # Internet Menüpunkt
+            '//*[@id="home"]',  # Heimnetz Menüpunkt
+            # Füge hier weitere robuste XPATHs für Hauptmenüpunkte hinzu
+        ]
+        print(f"🔍 Prüfe auf geladenes und klickbares Hauptmenü (Timeout: {timeout}s)...")
+        for xpath in menu_xpaths:
+            try:
+                # Versuche, das Element zu finden UND zu prüfen, ob es klickbar ist (sichtbar & enabled)
+                element = self.browser.sicher_warten(xpath, timeout=timeout / len(menu_xpaths), sichtbar=True)
+                if element and element.is_displayed() and element.is_enabled():
+                    print(f"✅ Hauptmenü-Element '{xpath}' gefunden und bereit.")
+                    return True
+            except Exception:
+                pass  # Element nicht gefunden oder nicht bereit, versuche nächstes
+        print("❌ Hauptmenü nicht gefunden oder nicht bereit.")
+        return False
+
+    def login(self, password: str, force_reload=False) -> bool:
         """
         Führt den Login in die FritzBox durch.
-        force_reload: Erzwingt ein Neuladen der Login-Seite.
+        Versucht, vorhandenen Login zu erkennen und Dialoge zu behandeln.
+        Gibt True bei Erfolg, False bei Fehlschlag zurück.
         """
         if not self.warte_auf_erreichbarkeit():
-            raise Exception("FritzBox nicht erreichbar für Login.")
+            print("❌ FritzBox nicht erreichbar für Login.")
+            return False
 
         self.password = password # Speichere das Passwort für potenzielle Re-Logins
 
         print("🔐 Login wird versucht...")
-        if force_reload or not self.is_logged_in: # Versuche Login nur, wenn nicht bereits eingeloggt
-            self.browser.get_url(self.url) # Gehe zur FritzBox URL
 
-            # Prüfe auf Sprachauswahl zuerst
-            if self._handle_language_selection():
-                self.browser.get_url(self.url) # Nach Sprachauswahl ggf. neu laden, um Login-Feld zu sehen
+        # NEU: Schnellprüfung, ob bereits eingeloggt und Hauptmenü bereit ist
+        if not force_reload and self.is_main_menu_loaded_and_ready(timeout=5):
+            print("✅ Bereits eingeloggt und Hauptmenü bereit.")
+            self.is_logged_in = True
+            return True
 
-            if not self._check_if_login_required():
-                # Hier könnten wir prüfen, ob wir bereits eingeloggt sind (z.B. durch Vorhandensein des Menüs)
-                try:
-                    self.browser.sicher_warten('//*[@id="mainMenu"] | //*[@id="content"]', timeout=5)
-                    print("✅ Bereits eingeloggt.")
-                    self.is_logged_in = True
-                    return True
-                except Exception:
-                    # Falls kein Login-Feld und kein Hauptmenü, dann ist etwas schief gelaufen.
-                    print("❌ Weder Login-Feld noch Hauptmenü gefunden. Unerwarteter Zustand.")
-                    return False
+        # Wenn nicht eingeloggt oder force_reload, dann weiter mit dem eigentlichen Login-Prozess
+        self.browser.get_url(self.url)
 
-            # Wenn wir hier sind, ist das Login-Feld vermutlich da und ein Login wird benötigt.
+        # Prüfe auf Sprachauswahl zuerst
+        if self._handle_language_selection():
+            self.browser.get_url(self.url) # Nach Sprachauswahl ggf. neu laden
+
+        # Prüfen, ob Login-Feld überhaupt sichtbar ist (oder ob wir auf einer anderen Seite sind)
+        def _check_if_login_required(self) -> bool:
+            """Interne Methode: Prüft, ob das Passwortfeld auf der aktuellen Seite vorhanden ist."""
             try:
-                self.browser.schreiben('//*[@id="uiPass"]', password)
-                self.browser.klicken('//*[@id="submitLoginBtn"]')
-
-                # Warte auf ein Element, das nach erfolgreichem Login erscheint
-                self.browser.sicher_warten('//*[@id="mainMenu"] | //*[@id="content"]', timeout=10)
-                print("✅ Login erfolgreich.")
-                self.is_logged_in = True
-                self._handle_post_login_dialogs() # Dialoge nach dem Login behandeln
-                return True
-            except Exception as e:
-                print(f"❌ Login fehlgeschlagen: {e}")
-                self.is_logged_in = False
+                # Hier direkt den WebDriver des Browser-Objekts verwenden
+                # Timeout kurz halten, da es nur eine schnelle Prüfung ist
+                return bool(
+                    self.browser.sicher_warten('//*[@id="uiPass" or @type="password"]', timeout=2, sichtbar=False))
+            except Exception:
                 return False
-        return True # War bereits eingeloggt
+
+        # Wenn wir hier sind, ist das Login-Feld vermutlich da und ein Login wird benötigt.
+        try:
+            if not self.browser.schreiben('//*[@id="uiPass"]', password):
+                raise Exception("Passwort konnte nicht in Feld geschrieben werden.")
+            if not self.browser.klicken('//*[@id="submitLoginBtn"]'):
+                raise Exception("Login-Button konnte nicht geklickt werden.")
+
+            # NEU: Warte auf das Hauptmenü als primäre Login-Bestätigung
+            if not self.is_main_menu_loaded_and_ready(timeout=15): # Längeres Timeout für ersten Login
+                raise Exception("Hauptmenü nach Login nicht geladen oder nicht bereit.")
+
+            print("✅ Login erfolgreich und Hauptmenü zugänglich.")
+            self.is_logged_in = True
+            self._handle_post_login_dialogs() # Dialoge nach dem Login behandeln
+            return True
+        except Exception as e:
+            print(f"❌ Login fehlgeschlagen: {e}")
+            self.is_logged_in = False
+            return False
 
     def _handle_post_login_dialogs(self):
         """Behandelt Dialoge, die direkt nach dem Login erscheinen können."""
