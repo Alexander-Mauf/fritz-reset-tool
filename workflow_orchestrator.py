@@ -30,35 +30,59 @@ class WorkflowOrchestrator:
     def _run_step_with_retry(self, description: str, func, *args, **kwargs) -> bool:
         """
         Führt einen einzelnen Schritt aus und bietet Optionen zur Wiederholung/Überspringen bei Fehlern.
+        Zusätzlich wird nach jeder Ausführung der Login-Status geprüft.
         Gibt True zurück, wenn der Schritt erfolgreich war oder übersprungen wurde, False bei Abbruch.
         """
         print(f"\n➡️ {description}...")
 
-        max_attempts = 2 # Maximal zwei automatische Versuche
+        max_attempts = 2
         for attempt in range(max_attempts):
             try:
-                # Führe die Funktion aus. Ihre Rückgabe ist entscheidend.
-                # Es wird erwartet, dass die Funktion True bei Erfolg, False bei bestimmten Fehlern zurückgibt.
-                # Oder eine Exception wirft, die hier gefangen wird.
                 result = func(*args, **kwargs)
-                if result is None: # Wenn die Funktion nichts zurückgibt, nehmen wir Erfolg an.
-                    print("✅ Schritt erfolgreich (Funktion gab keine explizite Rückgabe).")
-                    return True
-                elif result is True:
-                    print("✅ Schritt erfolgreich.")
-                    return True
-                else: # Wenn die Funktion explizit False zurückgibt (z.B. Login fehlgeschlagen)
-                    raise Exception("Funktion meldete Fehlschlag.")
+
+                # Prüfe, ob die Funktion selbst einen kontrollierten Fehlschlag gemeldet hat
+                if result is False:
+                    print(
+                        f"⚠️ Funktion '{description}' meldete expliziten Fehlschlag (Versuch {attempt + 1}/{max_attempts}).")
+                    if attempt < max_attempts - 1:
+                        print("🔁 Versuche es erneut...")
+                        time.sleep(2)
+                        continue  # Gehe zum nächsten Versuch in der Schleife
+                    else:
+                        break  # Alle automatischen Versuche aufgebraucht, gehe zur Benutzerabfrage
+
+                # Wenn die Funktion True zurückgab (Erfolg), oder None (was wir als Erfolg interpretieren,
+                # aber besser ist explizites True/False), DANN den Login-Status prüfen.
+                # Wichtig: is_logged_in_and_menu_ready aktualisiert fritzbox.is_logged_in!
+                if self.fritzbox and not self.fritzbox.is_logged_in_and_menu_ready(timeout=5):
+                    print(
+                        f"❌ Unerwarteter Logout oder Menü nicht bereit nach '{description}' (Versuch {attempt + 1}/{max_attempts}).")
+                    # Dies ist ein kritischer Zustand, der einen automatischen Retry oder Abbruch erfordert.
+                    if attempt < max_attempts - 1:
+                        print("🔁 Versuche es erneut (ggf. Re-Login)...")
+                        # Ein Re-Login ist hier nicht automatisch, sondern müsste im Workfloworchestrator passieren,
+                        # aber wir triggern den Retry für den aktuellen Schritt.
+                        # Wenn der nächste Schritt der Login ist, wird dieser neu ausgeführt.
+                        time.sleep(2)
+                        continue
+                    else:
+                        # Nach allen Retries und immer noch ausgeloggt:
+                        # signalisiere Fehlschlag und gehe zur Benutzerabfrage.
+                        print("❌ Auch nach Retries ausgeloggt. Gehe zur Benutzerabfrage.")
+                        break
+
+                # Wenn wir hier sind, war der Schritt erfolgreich UND der Login-Status ist OK.
+                print("✅ Schritt erfolgreich.")
+                return True
 
             except Exception as e:
                 print(f"⚠️ Fehler bei '{description}' (Versuch {attempt + 1}/{max_attempts}): {e}")
                 if attempt < max_attempts - 1:
                     print("🔁 Versuche es erneut...")
-                    time.sleep(2) # Kurze Pause vor dem nächsten Versuch
+                    time.sleep(2)
                 else:
-                    break # Alle automatischen Versuche aufgebraucht
+                    break
 
-        # Wenn alle automatischen Versuche fehlgeschlagen sind, frage den Benutzer
         while True:
             auswahl = input(
                 "🔁 (W)iederholen, (Ü)berspringen, (B)eenden, (N)eue FritzBox? "
@@ -69,12 +93,14 @@ class WorkflowOrchestrator:
                 return False
             elif auswahl == "w":
                 # Rekursiver Aufruf für Wiederholung mit Retry-Logik
+                # Wichtig: fritzbox.is_logged_in sollte hier schon False sein, falls ausgeloggt.
+                # Das Login wird vom Workflow dann als nächstes versucht, falls nötig.
                 return self._run_step_with_retry(description, func, *args, **kwargs)
             elif auswahl == "ü":
                 print("⏭️ Schritt übersprungen.")
                 return True
             elif auswahl == "n":
-                raise RuntimeError("RESTART_NEW_BOX") # Spezielles Signal für Main-Loop
+                raise RuntimeError("RESTART_NEW_BOX")
             else:
                 print("❓ Ungültige Eingabe. Bitte wähle w/ü/b/n.")
 

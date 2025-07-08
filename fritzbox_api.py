@@ -555,34 +555,72 @@ class FritzBox:
                 print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Modellermittlung erforderlich.")
                 return None
 
-            self.browser.get_url(self.url + "/overview")
-            time.sleep(2)
-
-            model_xpaths = [
+            # ERSTER VERSUCH: Modell von der aktuellen Seite (nach Login) auslesen
+            # Oft steht das Modell im Titel, Footer oder einem Infobereich
+            current_page_model_xpaths = [
                 '//h1[contains(text(), "FRITZ!Box")]',
                 '//span[@class="version" and contains(text(), "FRITZ!Box")]',
                 '//div[@class="boxInfo"]/span[contains(text(), "FRITZ!Box")]',
-                '//*[contains(@class, "deviceTitle")] | //*[contains(@class, "productname")]'
+                '//*[contains(@class, "deviceTitle")] | //*[contains(@class, "productname")]',
+                '//div[contains(@class, "flexRow") and .//span[contains(text(), "FRITZ!OS")]]/parent::div//span[contains(text(), "FRITZ!Box")]', # Manchmal in der Nähe der OS-Version
             ]
-            for xpath in model_xpaths:
-                try:
-                    model_elem = self.browser.sicher_warten(xpath, timeout=3)
-                    model_text = model_elem.text.strip()
-                    if "FRITZ!Box" in model_text:
-                        match = re.search(r'FRITZ!Box (\d{4,}(?: ?LTE)?)', model_text)
-                        if match:
-                            model_number = match.group(1).replace(" ", "_").strip()
-                            self.box_model = model_number
-                            print(f"✅ Box-Modell: {self.box_model}")
-                            return self.box_model
-                except Exception:
-                    pass
 
-            print("⚠️ Modell konnte nicht eindeutig identifiziert werden. Keine spezifische FRITZ!Box Modellnummer gefunden.")
+            for xpath in current_page_model_xpaths:
+                try:
+                    model_elem = self.browser.sicher_warten(xpath, timeout=2, sichtbar=True)
+                    if model_elem:
+                        model_text = model_elem.text.strip()
+                        if "FRITZ!Box" in model_text:
+                            match = re.search(r'FRITZ!Box (\d{4,}(?: ?LTE)?)', model_text)
+                            if match:
+                                model_number = match.group(1).replace(" ", "_").strip()
+                                self.box_model = model_number
+                                print(f"✅ Box-Modell: {self.box_model} von aktueller Seite ausgelesen.")
+                                return self.box_model
+                except Exception:
+                    pass # XPath nicht gefunden oder Element nicht sichtbar, versuche nächsten
+
+            print("⚠️ Modell konnte nicht direkt von der aktuellen Seite ermittelt werden. Versuche über Menü.")
+
+            # ZWEITER VERSUCH: Navigation über das Menü zum Home/Übersichtsbereich
+            # Führe eine Klickkette durch, um zur Übersichtsseite zu gelangen.
+            # Annahme: 'Übersicht' / 'Startseite' ist Teil des Menüs
+            if not self.is_logged_in_and_menu_ready(timeout=5): # Erneuter Check vor Navigation
+                print("❌ Menü nicht bereit für Navigation.")
+                return None
+
+            try:
+                # Versuche, auf 'Heimnetz' (oder ähnliches) zu klicken, dann auf 'Übersicht'
+                if self.browser.klicken('//*[@id="home"] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "heimnetz")]', timeout=5):
+                    time.sleep(1)
+                    # Jetzt nach einem Link zur "Übersicht" oder "Startseite" innerhalb des Heimnetz-Bereichs suchen
+                    if self.browser.klicken('//*[@id="mHome"] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übersicht")] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "startseite")]', timeout=5):
+                        time.sleep(2) # Warte, bis die Seite geladen ist
+                        # Jetzt erneut versuchen, das Modell auszulesen
+                        for xpath in current_page_model_xpaths: # Verwende die gleichen XPaths
+                            try:
+                                model_elem = self.browser.sicher_warten(xpath, timeout=3, sichtbar=True)
+                                if model_elem:
+                                    model_text = model_elem.text.strip()
+                                    if "FRITZ!Box" in model_text:
+                                        match = re.search(r'FRITZ!Box (\d{4,}(?: ?LTE)?)', model_text)
+                                        if match:
+                                            model_number = match.group(1).replace(" ", "_").strip()
+                                            self.box_model = model_number
+                                            print(f"✅ Box-Modell: {self.box_model} nach Menü-Navigation ausgelesen.")
+                                            return self.box_model
+                            except Exception:
+                                pass
+                else:
+                    print("⚠️ Konnte nicht auf 'Heimnetz' oder ähnliches klicken, um zur Übersicht zu gelangen.")
+            except Exception as e:
+                print(f"❌ Fehler bei der Menü-Navigation zur Modellermittlung: {e}")
+
+            print("❌ Box-Modell konnte auch nach Menü-Navigation nicht eindeutig identifiziert werden.")
             self.box_model = "UNKNOWN"
             return None
         except Exception as e:
-            print(f"❌ Fehler beim Ermitteln des Box-Modells: {e}")
+            print(f"❌ Schwerwiegender Fehler beim Ermitteln des Box-Modells: {e}")
             self.box_model = "UNKNOWN"
             return None
 
