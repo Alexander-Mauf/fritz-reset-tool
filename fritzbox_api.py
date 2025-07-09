@@ -800,7 +800,7 @@ class FritzBox:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def activate_expert_mode_if_needed(self) -> bool:
-        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks."""
+        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks und explizitem Warten."""
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
         if not self.os_version: return True
 
@@ -816,7 +816,16 @@ class FritzBox:
                 print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
                 menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
                 self.browser.driver.execute_script("arguments[0].click();", menu_icon)
-                time.sleep(2)
+
+                # KORREKTUR: Wir warten jetzt explizit darauf, dass das Menü aufgeklappt ist.
+                # Ein aufgeklapptes Menü hat oft ein 'aria-expanded="true"' Attribut.
+                # Wir geben ihm 5 Sekunden Zeit, um zu erscheinen.
+                print("...warte darauf, dass das Menü vollständig geöffnet ist.")
+                WebDriverWait(self.browser.driver, 5).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
+                )
+                print("...Menü ist geöffnet.")
 
                 # Schritt 2: Klick auf die Checkbox ebenfalls mit JS erzwingen
                 checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
@@ -825,7 +834,7 @@ class FritzBox:
                     print("...erzwinge Klick auf Checkbox mit JavaScript.")
                     self.browser.driver.execute_script("arguments[0].click();", checkbox)
                     print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                    time.sleep(2)
+                    time.sleep(2)  # Kurze Pause nach der Aktivierung
                 else:
                     print("✅ Erweiterte Ansicht ist bereits aktiv.")
 
