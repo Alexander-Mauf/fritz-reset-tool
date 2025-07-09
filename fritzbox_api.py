@@ -17,18 +17,33 @@ from browser_utils import Browser
 FRITZ_DEFAULT_URL = "http://fritz.box"
 
 
+# fritzbox_api.py
+
 class FirmwareManager:
-    """Verwaltet Firmware-Dateien und deren Pfade basierend auf dem FritzBox-Modell."""
+    """Verwaltet Firmware-Dateien und deren Pfade für mehrstufige Updates."""
 
     def __init__(self):
         self.firmware_mapping = {
-            "7590": "8.03",
-            "7530": "8.02",
-            "6890_LTE": "7.57",
+            "7590": {
+                "bridge": "07.17",
+                "final": "08.03",
+                "bridge_file": "FRITZ.Box_7590-07.17.image", # Beispielhafter Dateiname
+                "final_file": "FRITZ.Box_7590-08.03.image"
+            },
+            "7530": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "08.02",
+                "final_file": "FRITZ.Box_7530-08.02.image"
+            },
+            "6890": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "07.57",
+                "final_file": "FRITZ.Box_6890_LTE-07.57.image"
+            }
+            # Weitere Modelle hier hinzufügen
         }
 
     def _select_firmware_path_manually(self):
-        """Öffnet einen Dateidialog zur manuellen Auswahl des Firmware-Pfades."""
         # ... (diese Methode bleibt unverändert)
         root = tk.Tk()
         root.withdraw()
@@ -39,31 +54,30 @@ class FirmwareManager:
         root.destroy()
         return file_path
 
-    def get_firmware_path(self, box_model: str) -> str | None:
+    def get_firmware_path(self, box_model: str, version_type: str = "final") -> str | None:
         """
-        Versucht, den Firmware-Pfad automatisch zu finden, ausgehend vom Ausführungsordner.
+        Sucht den Pfad für einen bestimmten Versionstyp ("bridge" or "final").
         """
-        if not box_model:
-            print("⚠️ Box-Modell ist unbekannt. Firmware-Pfad muss manuell gewählt werden.")
+        if not box_model or box_model not in self.firmware_mapping:
+            print(f"⚠️ Kein Firmware-Eintrag für Modell '{box_model}' bekannt. Manuelle Auswahl.")
             return self._select_firmware_path_manually()
 
-        target_version = self.firmware_mapping.get(box_model)
-        if not target_version:
-            print(f"⚠️ Keine Ziel-Firmware für Modell '{box_model}' bekannt. Bitte manuell auswählen.")
+        model_files = self.firmware_mapping[box_model]
+        file_key = f"{version_type}_file" # z.B. "bridge_file" oder "final_file"
+
+        if file_key not in model_files:
+            print(f"⚠️ Kein '{version_type}'-Update für Modell {box_model} definiert. Manuelle Auswahl.")
             return self._select_firmware_path_manually()
 
-        # KORREKTUR: Nutzt das Verzeichnis, von dem das Programm gestartet wurde.
-        # Path(sys.argv[0]).parent ist die robusteste Methode dafür.
+        firmware_filename = model_files[file_key]
+
         try:
             current_dir = Path(sys.argv[0]).parent
         except Exception:
-            # Fallback, falls sys.argv[0] nicht wie erwartet funktioniert
             current_dir = Path.cwd()
 
-        firmware_filename = f"FRITZ.Box_{box_model}-{target_version}.image"
         firmware_path_auto = current_dir / "firmware und recovery" / firmware_filename
-
-        print(f"ℹ️ Suche Firmware für {box_model} unter: {firmware_path_auto}")
+        print(f"ℹ️ Suche {version_type}-Firmware für {box_model} unter: {firmware_path_auto}")
 
         if firmware_path_auto.is_file():
             print(f"✅ Firmware-Datei gefunden: {firmware_path_auto}")
@@ -799,52 +813,43 @@ class FritzBox:
         except Exception as e:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
-    def activate_expert_mode_if_needed(self) -> bool:
-        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
-        print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
-        if not self.os_version: return True
+    def perform_firmware_update(self, firmware_path: str) -> bool:
+        """Führt ein Firmware-Update über die Weboberfläche durch (nach Login)."""
+        if not self.is_logged_in_and_menu_ready():
+            print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
+            return False
+        if not firmware_path or not os.path.exists(firmware_path):
+            print(f"❌ Firmware-Datei nicht gefunden unter: {firmware_path}")
+            return False
 
-        match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
-        if not match: return True
+        print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
-        major, minor = int(match.group(1)), int(match.group(2))
+        try:
+            # Navigation zum Update-Menü
+            if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+            time.sleep(1)
+            if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
+            time.sleep(1)
+            if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]', timeout=5): return False
+            time.sleep(2)
 
-        if major < 7 or (major == 7 and minor < 15):
-            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird umgeschaltet.")
-            try:
-                # Schritt 1: Klick auf das Menü-Icon mit JS erzwingen
-                print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
-                menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
-                self.browser.driver.execute_script("arguments[0].click();", menu_icon)
-
-                # Warten, bis das Menü aufgeklappt ist
-                print("...warte darauf, dass das Menü vollständig geöffnet ist.")
-                WebDriverWait(self.browser.driver, 5).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
-                )
-                print("...Menü ist geöffnet.")
-
-                # Schritt 2: Klick auf den Link "Erweiterte Ansicht"
-                # KORREKTUR: Es wird nach einem <a>-Tag gesucht und einfach geklickt.
-                print("...suche den Link 'Erweiterte Ansicht'.")
-                expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
-
-                print("...erzwinge Klick auf den Link mit JavaScript.")
-                self.browser.driver.execute_script("arguments[0].click();", expert_link)
-
-                print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
-                # Nach dem Klick lädt die Seite oft neu oder der Zustand ändert sich.
-                # Eine kurze Pause ist hier sinnvoll, um dem Browser Zeit zu geben.
-                time.sleep(3)
-                return True
-
-            except Exception as e:
-                print(f"❌ Fehler beim Umschalten der erweiterten Ansicht: {e}")
+            # Pfad zur Firmware-Datei eintragen
+            if not self.browser.schreiben('//*[@id="uiFile"]', firmware_path):
+                print("❌ Fehler beim Eintragen des Firmware-Pfads.")
                 return False
-        else:
-            print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
+
+            # Klick auf "Update starten"
+            if not self.browser.klicken('//*[@id="uiUpdate"]'):
+                print("❌ Fehler beim Klicken auf 'Update starten'.")
+                return False
+
+            print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
+            print("⏳ Der Workflow wird nach dem Neustart mit der Überprüfung der Erreichbarkeit fortgesetzt.")
             return True
+
+        except Exception as e:
+            print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
+            return False
 
 
 def perform_firmware_update(self, firmware_path: str) -> bool:
