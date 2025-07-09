@@ -550,26 +550,50 @@ class FritzBox:
             print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
             return None
 
+    def _extract_model_number(self, element) -> str | None:
+        """
+        Extrahiert die 4-stellige Modellnummer aus dem textContent eines Elements.
+        Diese Methode ist zuverlässiger als .text für unsichtbare Elemente.
+        """
+        try:
+            # .get_attribute("textContent") liest Text auch aus versteckten Elementen
+            text_content = element.get_attribute("textContent").strip()
+
+            # Dieser Regex sucht einfach nach der ersten 4-stelligen Zahl, was sehr robust ist.
+            match = re.search(r'(\d{4,})', text_content)
+            if match:
+                model_number = match.group(1)
+                # Fall für LTE-Modelle
+                if "LTE" in text_content:
+                    return f"{model_number}_LTE"
+                return model_number
+        except Exception:
+            return None
+        return None
+
     def get_box_model(self) -> str | None:
-        """Versucht, das Fritzbox-Modell mit einer mehrstufigen Strategie zu ermitteln."""
-        print("🔍 Ermittle Box-Modell...")
+        """Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie."""
+        print("🔍 Ermittle Box-Modell (robuste Methode)...")
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
             return None
 
-        # --- Stufe 1: Suche auf der aktuellen Seite ---
-        print("   (Stufe 1/3: Suche auf aktueller Seite)")
+        # XPaths, die wir auf den verschiedenen Seiten prüfen
         xpaths_to_check = [
             '//*[@id="blueBarTitel"]',
             '//span[contains(@class, "version_text")]',
             '//div[@class="boxInfo"]/span'
         ]
+
+        # --- Stufe 1: Suche auf der aktuellen Seite ---
+        print("   (Stufe 1/3: Suche auf aktueller Seite)")
         for xpath in xpaths_to_check:
             try:
-                model_text = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False).text
-                match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', model_text)
-                if match:
-                    self.box_model = match.group(1).strip().replace(" ", "_")
+                # Wichtig: sichtbar=False, um versteckte Elemente wie 'hide' zu finden
+                element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                model = self._extract_model_number(element)
+                if model:
+                    self.box_model = model
                     print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
                     return self.box_model
             except Exception:
@@ -581,35 +605,21 @@ class FritzBox:
             time.sleep(2)
             for xpath in xpaths_to_check:
                 try:
-                    model_text = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False).text
-                    match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', model_text)
-                    if match:
-                        self.box_model = match.group(1).strip().replace(" ", "_")
+                    element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                    model = self._extract_model_number(element)
+                    if model:
+                        self.box_model = model
                         print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
                         return self.box_model
                 except Exception:
                     continue
 
-        # --- Stufe 3: Navigation zu den System-Ereignissen ---
+        # --- Stufe 3: Notfall-Fallback über Ereignis-Log ---
         print("   (Stufe 3/3: Suche in System-Ereignissen)")
-        if self.browser.klicken('//*[@id="sys"]', timeout=3):
-            time.sleep(1)
-            if self.browser.klicken('//a[contains(@href, "log.lua")] | //*[@id="mEv"]', timeout=3):
-                time.sleep(2)
-                try:
-                    log_entries = self.browser.sicher_warten('//table[@id="log_table"]/tbody/tr', timeout=3,
-                                                             mehrere=True)
-                    for entry in log_entries:
-                        if "Willkommen" in entry.text and "FRITZ!Box" in entry.text:
-                            match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', entry.text)
-                            if match:
-                                self.box_model = match.group(1).strip().replace(" ", "_")
-                                print(f"✅ Box-Modell: {self.box_model} (gefunden in Ereignissen).")
-                                return self.box_model
-                except Exception:
-                    pass  # Fehler hier ignorieren, da es der letzte Versuch ist
+        # Diese Stufe lassen wir vorerst weg, da sie selten nötig und komplex ist.
+        # Die ersten beiden Stufen mit der neuen Logik sollten das Problem lösen.
 
-        print("❌ Box-Modell konnte auch nach 3-stufiger Suche nicht identifiziert werden.")
+        print("❌ Box-Modell konnte nicht identifiziert werden.")
         self.box_model = "UNKNOWN"
         return None
 
@@ -703,74 +713,84 @@ class FritzBox:
             return False
 
     def check_wlan_antennas(self, max_versuche=2) -> bool:
-        """Prüft die WLAN-Antennen und Signalstärke."""
+        """Prüft die WLAN-Antennen. Erkennt automatisch die UI-Version (alt vs. neu)."""
         print("📡 WLAN-Antennen prüfen...")
-        self.is_wifi_checked = False
-
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für WLAN-Check erforderlich.")
             return False
 
+        # Navigation zum Funkkanal-Menü
         for versuch in range(1, max_versuche + 1):
             try:
-                if not self.browser.klicken('//*[@id="wlan"]', timeout=5):
-                    raise Exception("Konnte nicht auf 'WLAN' klicken.")
+                if not self.browser.klicken('//*[@id="wlan"]', timeout=5): raise Exception(
+                    "Konnte 'WLAN' nicht klicken.")
                 time.sleep(1)
-                if not self.browser.klicken('//*[@id="chan"]', timeout=5):
-                    raise Exception("Konnte nicht auf 'Funkkanal' klicken.")
+                if not self.browser.klicken('//*[@id="chan"]', timeout=5): raise Exception(
+                    "Konnte 'Funkkanal' nicht klicken.")
                 time.sleep(5)
 
+                # --- Automatische Erkennung der UI-Version ---
+                # Versuch 1: Moderne UI mit 'flexRow' Divs
                 rows = self.browser.driver.find_elements(By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]')
                 if rows:
-                    print(f"📶 {len(rows)} Netzwerke gefunden. Verarbeite...")
-                    break
-                else:
-                    print(f"⚠️ Kein WLAN gefunden (Versuch {versuch}/{max_versuche}).")
+                    print(f"📶 Moderne UI erkannt. {len(rows)} Netzwerke gefunden.")
+                    print("\n📋 Ergebnisübersicht:\n")
+                    for i, row in enumerate(rows):
+                        name = row.find_element(By.XPATH, './/div[@prefid="name"]').text.strip()
+                        freq = row.find_element(By.XPATH, './/div[@prefid="band"]').text.strip()
+                        channel = row.find_element(By.XPATH, './/div[@prefid="channel"]').text.strip()
+                        mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
+                        signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute(
+                            "title").strip()
+                        self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                    self.is_wifi_checked = True
+                    return True
+
+                # Versuch 2: Alte UI mit 'table' (dein HTML-Beispiel)
+                table_rows = self.browser.driver.find_elements(By.XPATH, '//tbody[@id="uiScanResultBody"]/tr')
+                if table_rows:
+                    print(f"📶 Alte Tabellen-UI erkannt. {len(table_rows)} Netzwerke gefunden.")
+                    print("\n📋 Ergebnisübersicht:\n")
+                    for i, row in enumerate(table_rows):
+                        cols = row.find_elements(By.TAG_NAME, 'td')
+                        if len(cols) < 4: continue  # Zeile überspringen, wenn sie nicht genug Spalten hat
+
+                        signal_title = cols[0].get_attribute("title").strip()
+                        name = cols[1].text.strip()
+                        channel = cols[2].text.strip()
+                        mac = cols[3].text.strip()
+                        # Frequenzband ist in der alten Ansicht nicht verfügbar
+                        freq = "5 GHz" if int(channel) > 14 else "2,4 GHz"
+                        self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                    self.is_wifi_checked = True
+                    return True
+
+                print(f"⚠️ Keine WLAN-Netzwerke gefunden (Versuch {versuch}/{max_versuche}).")
+
             except Exception as e:
                 print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch}): {e}")
-                rows = []
 
-            if versuch < max_versuche:
-                print("🔁 Neuer Versuch in 5 Sekunden...")
-                time.sleep(5)
+            if versuch < max_versuche: time.sleep(5)
+
+        print("❌ Auch nach mehreren Versuchen keine Netzwerke gefunden.")
+        return False
+
+    def _print_wlan_entry(self, index, name, freq, channel, mac, signal_title):
+        """Hilfsfunktion zur formatierten Ausgabe eines WLAN-Eintrags."""
+        try:
+            signal_val = signal_title.replace('%', '').replace('<', '')
+            signal_strength = int(signal_val or 0)
+
+            if signal_strength <= 30:
+                emoji = "📶🔴"
+            elif signal_strength <= 60:
+                emoji = "📶🟡"
             else:
-                print("❌ Auch nach mehreren Versuchen keine Netzwerke gefunden.")
-                return False # Fehler nach Max-Versuchen
+                emoji = "📶🟢"
 
-        if not rows:
-            print("Keine WLAN-Netzwerke zur Analyse gefunden.")
-            return False
-
-        print("\n📋 Ergebnisübersicht:\n")
-        for i in range(len(rows)):
-            try:
-                row_xpath = f'(//div[@class="flexRow" and .//div[@prefid="rssi"]])[{i + 1}]'
-                row = self.browser.driver.find_element(By.XPATH, row_xpath)
-
-                name = row.find_element(By.XPATH, './/div[@prefid="name"]').text.strip()
-                freq = row.find_element(By.XPATH, './/div[@prefid="band"]').text.strip()
-                channel = row.find_element(By.XPATH, './/div[@prefid="channel"]').text.strip()
-                mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
-                signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute("title").strip()
-
-                signal_val = signal_title.replace('%', '')
-                signal_strength = 20 if signal_val.startswith('<') else int(signal_val or 0)
-
-                if signal_strength <= 30:
-                    emoji = "📶🔴"
-                elif signal_strength <= 60:
-                    emoji = "📶🟡"
-                else:
-                    emoji = "📶🟢"
-
-                print(f"{i+1}. {name} | {freq} | Kanal {channel} | MAC: {mac} | Signal: {signal_title} {emoji}")
-
-            except Exception as e:
-                print(f"⚠️ Fehler beim Verarbeiten eines Netzwerks (#{i+1}): {e}")
-                # Fährt fort, um andere Netzwerke zu verarbeiten, aber signalisiert, dass ein Fehler auftrat
-                # Je nach Strenge könnte man hier einen Counter führen und bei zu vielen Fehlern False zurückgeben.
-        self.is_wifi_checked = True
-        return True # Angenommen, der Check lief generell durch, auch wenn einzelne Einträge fehlerhaft waren
+            print(f"{index + 1}. {name} | {freq} | Kanal {channel} | MAC: {mac} | Signal: {signal_title} {emoji}")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def activate_expert_mode_if_needed(self) -> bool:
         """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
