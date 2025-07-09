@@ -463,6 +463,50 @@ class FritzBox:
             print("❌ Fehler beim Bestätigen des Resets via 'sendFacReset'.")
             return False
 
+    def activate_expert_mode_if_needed(self) -> bool:
+        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks und explizitem Warten."""
+        print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
+        if not self.os_version: return True
+
+        match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
+        if not match: return True
+
+        major, minor = int(match.group(1)), int(match.group(2))
+
+        if major < 7 or (major == 7 and minor < 15):
+            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird umgeschaltet.")
+            try:
+                # Schritt 1: Klick auf das Menü-Icon mit JS erzwingen
+                print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
+                menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
+                self.browser.driver.execute_script("arguments[0].click();", menu_icon)
+
+                # Warten, bis das Menü aufgeklappt ist
+                print("...warte darauf, dass das Menü vollständig geöffnet ist.")
+                WebDriverWait(self.browser.driver, 5).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
+                )
+                print("...Menü ist geöffnet.")
+
+                # Schritt 2: Klick auf den Link "Erweiterte Ansicht"
+                print("...suche den Link 'Erweiterte Ansicht'.")
+                expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
+
+                print("...erzwinge Klick auf den Link mit JavaScript.")
+                self.browser.driver.execute_script("arguments[0].click();", expert_link)
+
+                print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
+                time.sleep(3)
+                return True
+
+            except Exception as e:
+                print(f"❌ Fehler beim Umschalten der erweiterten Ansicht: {e}")
+                return False
+        else:
+            print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
+            return True
+
     def perform_factory_reset_from_ui(self) -> bool:
         """
         Setzt die FritzBox über die Benutzeroberfläche auf Werkseinstellungen zurück.
