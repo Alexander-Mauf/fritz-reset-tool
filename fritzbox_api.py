@@ -812,25 +812,24 @@ class FritzBox:
         if major < 7 or (major == 7 and minor < 15):
             print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
             try:
-                # KORREKTUR: Führt die zwei Klicks wie von dir beschrieben aus.
-                if not self.browser.klicken('//*[@id="blueBarUserMenuIcon"]', timeout=5):
-                    print("❌ Menü-Icon für erweiterte Ansicht nicht gefunden.")
-                    return False
-                time.sleep(1)
+                # KORREKTUR: Wir erzwingen den Klick mit JavaScript, um das "intercepted"-Problem zu umgehen.
+                print("...versuche direkten JavaScript-Klick auf das Menü-Icon, um Verdeckung zu umgehen.")
+                menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
+                self.browser.driver.execute_script("arguments[0].click();", menu_icon)
+                time.sleep(2)  # Wichtig: Kurz warten, damit das Menü aufklappen kann.
 
                 checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
                 if not checkbox.is_selected():
                     print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
                     if self.browser.klicken(checkbox):
                         print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                        # Wir warten 2 Sekunden, damit das Menü von selbst verschwinden kann.
-                        time.sleep(2)
+                        time.sleep(2)  # Warten, bis die Seite die Änderung verarbeitet hat.
                     else:
                         return False
                 else:
                     print("✅ Erweiterte Ansicht ist bereits aktiv.")
-                    # Erneuter Klick auf das Icon, um das Menü sicher zu schließen.
-                    self.browser.klicken('//*[@id="blueBarUserMenuIcon"]')
+
+                # Das Menü sollte sich von allein schließen oder durch die nächste Aktion nicht mehr stören.
                 return True
 
             except Exception as e:
