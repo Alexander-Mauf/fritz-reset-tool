@@ -443,7 +443,10 @@ class FritzBox:
             return False
 
     def perform_factory_reset_from_ui(self) -> bool:
-        """Setzt die FritzBox über die Benutzeroberfläche auf Werkseinstellungen zurück (nach Login)."""
+        """
+        Setzt die FritzBox über die Benutzeroberfläche auf Werkseinstellungen zurück.
+        Diese Methode ist hybrid und versucht Pfade für alte und neue OS-Versionen.
+        """
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für UI-Reset erforderlich.")
             return False
@@ -451,33 +454,50 @@ class FritzBox:
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
+            # Schritt 1: Klick auf "System" (konsistent über die meisten Versionen)
             if not self.browser.klicken('//*[@id="sys"]', timeout=5):
                 print("Konnte nicht auf 'System' klicken.")
                 return False
             time.sleep(1)
-            if not self.browser.klicken('//*[@id="mSave"]', timeout=5):
-                print("Konnte nicht auf 'Sicherung' klicken.")
-                return False
-            time.sleep(1)
 
-            if not self.browser.klicken('//*[@id="default"]', timeout=5):
-                print("Konnte nicht auf 'Werkseinstellungen' klicken.")
-                return False
-            time.sleep(1)
-
-            confirm_button_xpaths = [
-                '//*[@id="content"]/div/button',
-                '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "wiederherstellen")]',
-                '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "wiederherstellen")]',
-                '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "wiederherstellen")]',
+            # Schritt 2: Klick auf "Sicherung" (kombiniert alte und neue Selektoren)
+            backup_selectors = [
+                '//*[@id="mSave"]',  # ID für neuere Versionen
+                '//a[contains(@href, "backup.lua")]',  # Link-Struktur für ältere Versionen
+                '//a[contains(text(), "Sicherung")]'  # Text-basierter Fallback
             ]
+            if not self.browser.klicken(backup_selectors, timeout=5):
+                print("Konnte den Menüpunkt 'Sicherung' nicht finden.")
+                return False
+            time.sleep(1)
+
+            # Schritt 3: Klick auf den Tab "Werkseinstellungen"
+            factory_reset_tab_selectors = [
+                '//*[@id="default"]',  # Standard-ID für den Tab
+                '//a[contains(text(), "Werkseinstellungen")]'  # Text-basierter Fallback
+            ]
+            if not self.browser.klicken(factory_reset_tab_selectors, timeout=5):
+                print("Konnte nicht auf den Tab 'Werkseinstellungen' klicken.")
+                return False
+            time.sleep(1)
+
+            # Schritt 4: Klick auf den finalen Bestätigungs-Button (kombiniert mehrere Möglichkeiten)
+            confirm_button_xpaths = [
+                '//*[@id="uiDefaults"]',  # Spezifische ID für ältere Versionen (dein Fund)
+                '//*[@id="content"]/div/button',  # Häufige Struktur bei neueren Versionen
+                '//button[contains(text(), "Werkseinstellungen laden")]',  # Text auf neueren Buttons
+                '//button[contains(text(), "Wiederherstellen")]'  # Alternativer Text
+            ]
+
             found_confirm_button = False
             for xpath in confirm_button_xpaths:
-                if self.browser.klicken(xpath, timeout=5):
+                if self.browser.klicken(xpath, timeout=2):  # Kurzer Timeout, da wir mehrere XPaths testen
+                    print(f"✅ Bestätigungs-Button gefunden und geklickt ({xpath}).")
                     found_confirm_button = True
                     break
+
             if not found_confirm_button:
-                print("Konnte keinen Bestätigungsbutton für Werkseinstellungen klicken.")
+                print("Konnte keinen Bestätigungsbutton für die Werkseinstellungen finden.")
                 return False
             time.sleep(3)
 
@@ -485,40 +505,23 @@ class FritzBox:
             print(f"❌ Fehler im Reset-Ablauf über UI-Menü: {e}")
             return False
 
+        # Schritt 5: Auf physische Bestätigung warten (sollte für alle Versionen gleich sein)
         print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken (falls erforderlich)...")
-
         try:
-            def finde_und_klicke_ok_button(driver_instance):
-                ok_xpaths = [
-                    '//*[@id="Button1"]', # AVM standard
-                    '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-                    '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-                    '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-                ]
-                for xpath in ok_xpaths:
-                    try:
-                        btn = WebDriverWait(driver_instance, 1).until(
-                            EC.presence_of_element_located((By.XPATH, xpath))
-                        )
-                        if btn.is_displayed() and btn.is_enabled():
-                            btn.click()
-                            return True
-                    except:
-                        pass
-                return False
-
-            WebDriverWait(self.browser.driver, 180).until(finde_und_klicke_ok_button)
+            ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
+            btn = self.browser.sicher_warten(ok_button_xpath, timeout=180, sichtbar=True)
+            btn.click()
             print("✅ OK-Button geklickt nach physischer Bestätigung.")
             self.is_reset = True
-            time.sleep(25)
+            time.sleep(25)  # Zeit für den Neustart-Prozess geben
             if self.ist_sprachauswahl():
                 print("✅ Erfolgreich auf Werkseinstellungen zurückgesetzt.")
                 return True
             else:
-                print("⚠️ Nicht verifiziert – bitte manuell prüfen.")
-                return False
+                print("⚠️ Reset abgeschlossen, aber Sprachauswahl nicht verifiziert. Bitte manuell prüfen.")
+                return True
         except Exception as e:
-            print(f"❌ Fehler bei OK-Klick nach physischer Bestätigung: {e}")
+            print(f"❌ Fehler beim Warten auf den finalen OK-Klick: {e}")
             return False
 
 
@@ -548,63 +551,65 @@ class FritzBox:
             return None
 
     def get_box_model(self) -> str | None:
-        """Versucht, das Fritzbox-Modell zu ermitteln."""
+        """Versucht, das Fritzbox-Modell mit einer mehrstufigen Strategie zu ermitteln."""
         print("🔍 Ermittle Box-Modell...")
         if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Modellermittlung erforderlich.")
+            print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
             return None
 
-        # VERSUCH 1: Modell direkt von der aktuellen Seite auslesen
-        current_page_model_xpaths = [
-            '//h1[contains(text(), "FRITZ!Box")]',
-            '//span[contains(@class, "version_text") and contains(text(), "FRITZ!Box")]',
-            '//div[@class="boxInfo"]/span[contains(text(), "FRITZ!Box")]',
-            '//*[contains(@class, "deviceTitle")] | //*[contains(@class, "productname")]',
+        # --- Stufe 1: Suche auf der aktuellen Seite ---
+        print("   (Stufe 1/3: Suche auf aktueller Seite)")
+        xpaths_to_check = [
+            '//*[@id="blueBarTitel"]',
+            '//span[contains(@class, "version_text")]',
+            '//div[@class="boxInfo"]/span'
         ]
-
-        for xpath in current_page_model_xpaths:
+        for xpath in xpaths_to_check:
             try:
-                model_elem = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
-                model_text = model_elem.text.strip()
-                if "FRITZ!Box" in model_text:
-                    match = re.search(r'FRITZ!Box ([\w-]+ ?\d{4,}(?: ?LTE)?)', model_text)
-                    if match:
-                        model_number = match.group(1).replace(" ", "_").strip()
-                        self.box_model = model_number
-                        print(f"✅ Box-Modell: {self.box_model} (von aktueller Seite ausgelesen).")
-                        return self.box_model
+                model_text = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False).text
+                match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', model_text)
+                if match:
+                    self.box_model = match.group(1).strip().replace(" ", "_")
+                    print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
+                    return self.box_model
             except Exception:
                 continue
 
-        print("⚠️ Modell konnte nicht direkt ausgelesen werden. Versuche Navigation zur Übersicht.")
+        # --- Stufe 2: Navigation zur Übersichtsseite ---
+        print("   (Stufe 2/3: Suche auf Übersichtsseite)")
+        if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
+            time.sleep(2)
+            for xpath in xpaths_to_check:
+                try:
+                    model_text = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False).text
+                    match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', model_text)
+                    if match:
+                        self.box_model = match.group(1).strip().replace(" ", "_")
+                        print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
+                        return self.box_model
+                except Exception:
+                    continue
 
-        # VERSUCH 2: Navigation zur Übersichtsseite ('mHome')
-        try:
-            # Klickt direkt auf den 'Übersicht' Menüpunkt
-            if self.browser.klicken('//*[@id="mHome"]', timeout=5):
-                time.sleep(2) # Warte, bis die Übersichtsseite geladen ist
-
-                # Erneuter Versuch, das Modell von der Übersichtsseite auszulesen
-                for xpath in current_page_model_xpaths:
-                    try:
-                        model_elem = self.browser.sicher_warten(xpath, timeout=2, sichtbar=True)
-                        model_text = model_elem.text.strip()
-                        if "FRITZ!Box" in model_text:
-                            match = re.search(r'FRITZ!Box ([\w-]+ ?\d{4,}(?: ?LTE)?)', model_text)
+        # --- Stufe 3: Navigation zu den System-Ereignissen ---
+        print("   (Stufe 3/3: Suche in System-Ereignissen)")
+        if self.browser.klicken('//*[@id="sys"]', timeout=3):
+            time.sleep(1)
+            if self.browser.klicken('//a[contains(@href, "log.lua")] | //*[@id="mEv"]', timeout=3):
+                time.sleep(2)
+                try:
+                    log_entries = self.browser.sicher_warten('//table[@id="log_table"]/tbody/tr', timeout=3,
+                                                             mehrere=True)
+                    for entry in log_entries:
+                        if "Willkommen" in entry.text and "FRITZ!Box" in entry.text:
+                            match = re.search(r'FRITZ!Box ([\w\s-]+\d{4,}(?: ?[A-Z]{1,3})?)', entry.text)
                             if match:
-                                model_number = match.group(1).replace(" ", "_").strip()
-                                self.box_model = model_number
-                                print(f"✅ Box-Modell: {self.box_model} (nach Navigation zur Übersicht ausgelesen).")
+                                self.box_model = match.group(1).strip().replace(" ", "_")
+                                print(f"✅ Box-Modell: {self.box_model} (gefunden in Ereignissen).")
                                 return self.box_model
-                    except Exception:
-                        continue
-            else:
-                 print("⚠️ Konnte nicht zur Übersichtsseite navigieren.")
+                except Exception:
+                    pass  # Fehler hier ignorieren, da es der letzte Versuch ist
 
-        except Exception as e:
-            print(f"❌ Fehler bei der Navigation zur Übersicht: {e}")
-
-        print("❌ Box-Modell konnte nicht eindeutig identifiziert werden.")
+        print("❌ Box-Modell konnte auch nach 3-stufiger Suche nicht identifiziert werden.")
         self.box_model = "UNKNOWN"
         return None
 
@@ -768,56 +773,47 @@ class FritzBox:
         return True # Angenommen, der Check lief generell durch, auch wenn einzelne Einträge fehlerhaft waren
 
     def activate_expert_mode_if_needed(self) -> bool:
-        """
-        Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig (< 07.15).
-        """
+        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
-        if not self.os_version:
-            print("⚠️ OS-Version unbekannt. Prüfung wird übersprungen.")
-            return True  # Gehen von Erfolg aus, um den Workflow nicht zu blockieren
+        if not self.os_version: return True  # Überspringen bei unbekannter Version
 
-        # Extrahiere Versionsnummer (z.B. aus 'FRITZ!OS: 07.29')
-        match = re.search(r'(\d{2})\.(\d{2})', self.os_version)
-        if not match:
-            print(f"⚠️ Versionsformat '{self.os_version}' nicht erkannt. Prüfung wird übersprungen.")
-            return True
+        match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
+        if not match: return True  # Überspringen bei unbekanntem Format
 
         major, minor = int(match.group(1)), int(match.group(2))
 
-        # Prüfung nur für Versionen unter 7.15 durchführen
         if major < 7 or (major == 7 and minor < 15):
             print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
             try:
-                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                # Pfad für ältere Versionen über das User-Menü-Icon
+                if not self.browser.klicken('//*[@id="blueBarUserMenuIcon"]', timeout=5):
+                    print("...Icon nicht gefunden, versuche Fallback über System-Menü.")
+                    if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                    time.sleep(1)
+                    if not self.browser.klicken('//a[contains(@href, "expert_mode.lua")]', timeout=5): return False
                 time.sleep(1)
-                if not self.browser.klicken('//*[@id="mSys"] | //*[@id="mSysView"]',
-                                            timeout=5): return False  # mSys für alte, mSysView für neuere Versionen
-                time.sleep(2)
 
-                # Prüfen, ob die Checkbox für die erweiterte Ansicht existiert und nicht ausgewählt ist
-                checkbox_xpath = '//input[@id="expert"]'
-                try:
-                    checkbox = self.browser.sicher_warten(checkbox_xpath, timeout=5)
-                    if not checkbox.is_selected():
-                        print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
-                        if self.browser.klicken(checkbox_xpath):
-                            # Klicke auf 'Übernehmen'
-                            if self.browser.klicken('//*[@id="uiApply"]'):
-                                print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                                time.sleep(3)  # Warte auf das Neuladen der Seite
-                                return True
-                            else:
-                                print("❌ 'Übernehmen'-Button für erweiterte Ansicht nicht gefunden.")
-                                return False
-                        else:
-                            print("❌ Checkbox für erweiterte Ansicht konnte nicht geklickt werden.")
-                            return False
+                checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
+                if not checkbox.is_selected():
+                    print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
+                    if self.browser.klicken(checkbox):
+                        print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
+                        time.sleep(3)
                     else:
-                        print("✅ Erweiterte Ansicht ist bereits aktiv.")
-                        return True
-                except Exception:
-                    print("ℹ️ Checkbox für erweiterte Ansicht nicht gefunden (möglicherweise immer aktiv).")
-                    return True  # Gehen von Erfolg aus
+                        return False
+                else:
+                    print("✅ Erweiterte Ansicht ist bereits aktiv.")
+
+                # KORREKTUR: Menü wieder schließen, um nachfolgende Schritte nicht zu stören.
+                # Wir prüfen kurz, ob das Menü-Icon noch da ist, bevor wir es klicken.
+                try:
+                    if self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=1):
+                        self.browser.klicken('//*[@id="blueBarUserMenuIcon"]')
+                except:
+                    # Falls das Menü durch die Aktion schon zu ist, ist das auch ok.
+                    pass
+                return True
+
             except Exception as e:
                 print(f"❌ Fehler beim Aktivieren der erweiterten Ansicht: {e}")
                 return False
