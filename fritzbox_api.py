@@ -6,6 +6,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
 import re
+import sys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,6 +15,7 @@ from browser_utils import Browser
 
 
 FRITZ_DEFAULT_URL = "http://fritz.box"
+
 
 class FirmwareManager:
     """Verwaltet Firmware-Dateien und deren Pfade basierend auf dem FritzBox-Modell."""
@@ -27,6 +29,7 @@ class FirmwareManager:
 
     def _select_firmware_path_manually(self):
         """Öffnet einen Dateidialog zur manuellen Auswahl des Firmware-Pfades."""
+        # ... (diese Methode bleibt unverändert)
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename(
@@ -38,32 +41,36 @@ class FirmwareManager:
 
     def get_firmware_path(self, box_model: str) -> str | None:
         """
-        Versucht, den Firmware-Pfad automatisch zu finden.
-        Fällt auf einen manuellen Dateidialog zurück, wenn die Datei nicht gefunden wird.
+        Versucht, den Firmware-Pfad automatisch zu finden, ausgehend vom Ausführungsordner.
         """
         if not box_model:
-            print("⚠️ Box-Modell ist unbekannt. Firmware-Pfad kann nicht automatisch ermittelt werden.")
+            print("⚠️ Box-Modell ist unbekannt. Firmware-Pfad muss manuell gewählt werden.")
             return self._select_firmware_path_manually()
 
         target_version = self.firmware_mapping.get(box_model)
         if not target_version:
-            print(f"⚠️ Keine Ziel-Firmware-Version für Modell '{box_model}' bekannt. Bitte manuell auswählen.")
+            print(f"⚠️ Keine Ziel-Firmware für Modell '{box_model}' bekannt. Bitte manuell auswählen.")
             return self._select_firmware_path_manually()
 
-        current_dir = Path(__file__).parent
+        # KORREKTUR: Nutzt das Verzeichnis, von dem das Programm gestartet wurde.
+        # Path(sys.argv[0]).parent ist die robusteste Methode dafür.
+        try:
+            current_dir = Path(sys.argv[0]).parent
+        except Exception:
+            # Fallback, falls sys.argv[0] nicht wie erwartet funktioniert
+            current_dir = Path.cwd()
+
         firmware_filename = f"FRITZ.Box_{box_model}-{target_version}.image"
         firmware_path_auto = current_dir / "firmware und recovery" / firmware_filename
 
-        print(f"ℹ️ Versuche automatischen Firmware-Pfad für {box_model} (Ziel: {target_version}): {firmware_path_auto}")
+        print(f"ℹ️ Suche Firmware für {box_model} unter: {firmware_path_auto}")
 
         if firmware_path_auto.is_file():
             print(f"✅ Firmware-Datei gefunden: {firmware_path_auto}")
             return str(firmware_path_auto)
         else:
-            print(f"❌ Firmware-Datei nicht gefunden unter {firmware_path_auto}.")
-            print("⚠️ Fällt auf manuelle Auswahl zurück.")
+            print(f"❌ Firmware-Datei nicht gefunden. Bitte manuell auswählen.")
             return self._select_firmware_path_manually()
-
 
 class FritzBox:
     """Repräsentiert eine FritzBox und kapselt ihre Interaktionen."""
@@ -795,22 +802,20 @@ class FritzBox:
     def activate_expert_mode_if_needed(self) -> bool:
         """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
-        if not self.os_version: return True  # Überspringen bei unbekannter Version
+        if not self.os_version: return True
 
         match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
-        if not match: return True  # Überspringen bei unbekanntem Format
+        if not match: return True
 
         major, minor = int(match.group(1)), int(match.group(2))
 
         if major < 7 or (major == 7 and minor < 15):
             print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
             try:
-                # Pfad für ältere Versionen über das User-Menü-Icon
+                # KORREKTUR: Führt die zwei Klicks wie von dir beschrieben aus.
                 if not self.browser.klicken('//*[@id="blueBarUserMenuIcon"]', timeout=5):
-                    print("...Icon nicht gefunden, versuche Fallback über System-Menü.")
-                    if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
-                    time.sleep(1)
-                    if not self.browser.klicken('//a[contains(@href, "expert_mode.lua")]', timeout=5): return False
+                    print("❌ Menü-Icon für erweiterte Ansicht nicht gefunden.")
+                    return False
                 time.sleep(1)
 
                 checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
@@ -818,20 +823,14 @@ class FritzBox:
                     print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
                     if self.browser.klicken(checkbox):
                         print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                        time.sleep(3)
+                        # Wir warten 2 Sekunden, damit das Menü von selbst verschwinden kann.
+                        time.sleep(2)
                     else:
                         return False
                 else:
                     print("✅ Erweiterte Ansicht ist bereits aktiv.")
-
-                # KORREKTUR: Menü wieder schließen, um nachfolgende Schritte nicht zu stören.
-                # Wir prüfen kurz, ob das Menü-Icon noch da ist, bevor wir es klicken.
-                try:
-                    if self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=1):
-                        self.browser.klicken('//*[@id="blueBarUserMenuIcon"]')
-                except:
-                    # Falls das Menü durch die Aktion schon zu ist, ist das auch ok.
-                    pass
+                    # Erneuter Klick auf das Icon, um das Menü sicher zu schließen.
+                    self.browser.klicken('//*[@id="blueBarUserMenuIcon"]')
                 return True
 
             except Exception as e:
@@ -889,4 +888,5 @@ def perform_firmware_update(self, firmware_path: str) -> bool:
 
     except Exception as e:
         print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
+        time.sleep(15)
         return False
