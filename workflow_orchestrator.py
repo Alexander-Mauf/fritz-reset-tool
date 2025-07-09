@@ -193,7 +193,7 @@ class WorkflowOrchestrator:
                     return None
         except Exception as e:
             print(f"\n❌ Schwerwiegender Fehler im Workflow: {e}")
-            return Non
+            return None
         finally:
             if self.browser:
                 self.browser.quit()
