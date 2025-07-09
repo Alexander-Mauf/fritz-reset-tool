@@ -550,79 +550,63 @@ class FritzBox:
     def get_box_model(self) -> str | None:
         """Versucht, das Fritzbox-Modell zu ermitteln."""
         print("🔍 Ermittle Box-Modell...")
+        if not self.is_logged_in_and_menu_ready():
+            print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Modellermittlung erforderlich.")
+            return None
+
+        # VERSUCH 1: Modell direkt von der aktuellen Seite auslesen
+        current_page_model_xpaths = [
+            '//h1[contains(text(), "FRITZ!Box")]',
+            '//span[contains(@class, "version_text") and contains(text(), "FRITZ!Box")]',
+            '//div[@class="boxInfo"]/span[contains(text(), "FRITZ!Box")]',
+            '//*[contains(@class, "deviceTitle")] | //*[contains(@class, "productname")]',
+        ]
+
+        for xpath in current_page_model_xpaths:
+            try:
+                model_elem = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                model_text = model_elem.text.strip()
+                if "FRITZ!Box" in model_text:
+                    match = re.search(r'FRITZ!Box ([\w-]+ ?\d{4,}(?: ?LTE)?)', model_text)
+                    if match:
+                        model_number = match.group(1).replace(" ", "_").strip()
+                        self.box_model = model_number
+                        print(f"✅ Box-Modell: {self.box_model} (von aktueller Seite ausgelesen).")
+                        return self.box_model
+            except Exception:
+                continue
+
+        print("⚠️ Modell konnte nicht direkt ausgelesen werden. Versuche Navigation zur Übersicht.")
+
+        # VERSUCH 2: Navigation zur Übersichtsseite ('mHome')
         try:
-            if not self.is_logged_in_and_menu_ready():
-                print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Modellermittlung erforderlich.")
-                return None
+            # Klickt direkt auf den 'Übersicht' Menüpunkt
+            if self.browser.klicken('//*[@id="mHome"]', timeout=5):
+                time.sleep(2) # Warte, bis die Übersichtsseite geladen ist
 
-            # ERSTER VERSUCH: Modell von der aktuellen Seite (nach Login) auslesen
-            # Oft steht das Modell im Titel, Footer oder einem Infobereich
-            current_page_model_xpaths = [
-                '//h1[contains(text(), "FRITZ!Box")]',
-                '//span[@class="version" and contains(text(), "FRITZ!Box")]',
-                '//div[@class="boxInfo"]/span[contains(text(), "FRITZ!Box")]',
-                '//*[contains(@class, "deviceTitle")] | //*[contains(@class, "productname")]',
-                '//div[contains(@class, "flexRow") and .//span[contains(text(), "FRITZ!OS")]]/parent::div//span[contains(text(), "FRITZ!Box")]', # Manchmal in der Nähe der OS-Version
-            ]
-
-            for xpath in current_page_model_xpaths:
-                try:
-                    model_elem = self.browser.sicher_warten(xpath, timeout=2, sichtbar=True)
-                    if model_elem:
+                # Erneuter Versuch, das Modell von der Übersichtsseite auszulesen
+                for xpath in current_page_model_xpaths:
+                    try:
+                        model_elem = self.browser.sicher_warten(xpath, timeout=2, sichtbar=True)
                         model_text = model_elem.text.strip()
                         if "FRITZ!Box" in model_text:
-                            match = re.search(r'FRITZ!Box (\d{4,}(?: ?LTE)?)', model_text)
+                            match = re.search(r'FRITZ!Box ([\w-]+ ?\d{4,}(?: ?LTE)?)', model_text)
                             if match:
                                 model_number = match.group(1).replace(" ", "_").strip()
                                 self.box_model = model_number
-                                print(f"✅ Box-Modell: {self.box_model} von aktueller Seite ausgelesen.")
+                                print(f"✅ Box-Modell: {self.box_model} (nach Navigation zur Übersicht ausgelesen).")
                                 return self.box_model
-                except Exception:
-                    pass # XPath nicht gefunden oder Element nicht sichtbar, versuche nächsten
+                    except Exception:
+                        continue
+            else:
+                 print("⚠️ Konnte nicht zur Übersichtsseite navigieren.")
 
-            print("⚠️ Modell konnte nicht direkt von der aktuellen Seite ermittelt werden. Versuche über Menü.")
-
-            # ZWEITER VERSUCH: Navigation über das Menü zum Home/Übersichtsbereich
-            # Führe eine Klickkette durch, um zur Übersichtsseite zu gelangen.
-            # Annahme: 'Übersicht' / 'Startseite' ist Teil des Menüs
-            if not self.is_logged_in_and_menu_ready(timeout=5): # Erneuter Check vor Navigation
-                print("❌ Menü nicht bereit für Navigation.")
-                return None
-
-            try:
-                # Versuche, auf 'Heimnetz' (oder ähnliches) zu klicken, dann auf 'Übersicht'
-                if self.browser.klicken('//*[@id="home"] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "heimnetz")]', timeout=5):
-                    time.sleep(1)
-                    # Jetzt nach einem Link zur "Übersicht" oder "Startseite" innerhalb des Heimnetz-Bereichs suchen
-                    if self.browser.klicken('//*[@id="mHome"] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übersicht")] | //*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "startseite")]', timeout=5):
-                        time.sleep(2) # Warte, bis die Seite geladen ist
-                        # Jetzt erneut versuchen, das Modell auszulesen
-                        for xpath in current_page_model_xpaths: # Verwende die gleichen XPaths
-                            try:
-                                model_elem = self.browser.sicher_warten(xpath, timeout=3, sichtbar=True)
-                                if model_elem:
-                                    model_text = model_elem.text.strip()
-                                    if "FRITZ!Box" in model_text:
-                                        match = re.search(r'FRITZ!Box (\d{4,}(?: ?LTE)?)', model_text)
-                                        if match:
-                                            model_number = match.group(1).replace(" ", "_").strip()
-                                            self.box_model = model_number
-                                            print(f"✅ Box-Modell: {self.box_model} nach Menü-Navigation ausgelesen.")
-                                            return self.box_model
-                            except Exception:
-                                pass
-                else:
-                    print("⚠️ Konnte nicht auf 'Heimnetz' oder ähnliches klicken, um zur Übersicht zu gelangen.")
-            except Exception as e:
-                print(f"❌ Fehler bei der Menü-Navigation zur Modellermittlung: {e}")
-
-            print("❌ Box-Modell konnte auch nach Menü-Navigation nicht eindeutig identifiziert werden.")
-            self.box_model = "UNKNOWN"
-            return None
         except Exception as e:
-            print(f"❌ Schwerwiegender Fehler beim Ermitteln des Box-Modells: {e}")
-            self.box_model = "UNKNOWN"
-            return None
+            print(f"❌ Fehler bei der Navigation zur Übersicht: {e}")
+
+        print("❌ Box-Modell konnte nicht eindeutig identifiziert werden.")
+        self.box_model = "UNKNOWN"
+        return None
 
     def dsl_setup_wizard(self) -> bool:
         """Durchläuft den DSL-Setup-Wizard (falls er nach einem Reset/Update erscheint)."""
@@ -782,3 +766,111 @@ class FritzBox:
                 # Je nach Strenge könnte man hier einen Counter führen und bei zu vielen Fehlern False zurückgeben.
         self.is_wifi_checked = True
         return True # Angenommen, der Check lief generell durch, auch wenn einzelne Einträge fehlerhaft waren
+
+    def activate_expert_mode_if_needed(self) -> bool:
+        """
+        Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig (< 07.15).
+        """
+        print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
+        if not self.os_version:
+            print("⚠️ OS-Version unbekannt. Prüfung wird übersprungen.")
+            return True  # Gehen von Erfolg aus, um den Workflow nicht zu blockieren
+
+        # Extrahiere Versionsnummer (z.B. aus 'FRITZ!OS: 07.29')
+        match = re.search(r'(\d{2})\.(\d{2})', self.os_version)
+        if not match:
+            print(f"⚠️ Versionsformat '{self.os_version}' nicht erkannt. Prüfung wird übersprungen.")
+            return True
+
+        major, minor = int(match.group(1)), int(match.group(2))
+
+        # Prüfung nur für Versionen unter 7.15 durchführen
+        if major < 7 or (major == 7 and minor < 15):
+            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
+            try:
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                time.sleep(1)
+                if not self.browser.klicken('//*[@id="mSys"] | //*[@id="mSysView"]',
+                                            timeout=5): return False  # mSys für alte, mSysView für neuere Versionen
+                time.sleep(2)
+
+                # Prüfen, ob die Checkbox für die erweiterte Ansicht existiert und nicht ausgewählt ist
+                checkbox_xpath = '//input[@id="expert"]'
+                try:
+                    checkbox = self.browser.sicher_warten(checkbox_xpath, timeout=5)
+                    if not checkbox.is_selected():
+                        print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
+                        if self.browser.klicken(checkbox_xpath):
+                            # Klicke auf 'Übernehmen'
+                            if self.browser.klicken('//*[@id="uiApply"]'):
+                                print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
+                                time.sleep(3)  # Warte auf das Neuladen der Seite
+                                return True
+                            else:
+                                print("❌ 'Übernehmen'-Button für erweiterte Ansicht nicht gefunden.")
+                                return False
+                        else:
+                            print("❌ Checkbox für erweiterte Ansicht konnte nicht geklickt werden.")
+                            return False
+                    else:
+                        print("✅ Erweiterte Ansicht ist bereits aktiv.")
+                        return True
+                except Exception:
+                    print("ℹ️ Checkbox für erweiterte Ansicht nicht gefunden (möglicherweise immer aktiv).")
+                    return True  # Gehen von Erfolg aus
+            except Exception as e:
+                print(f"❌ Fehler beim Aktivieren der erweiterten Ansicht: {e}")
+                return False
+        else:
+            print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
+            return True
+
+
+def perform_firmware_update(self, firmware_path: str) -> bool:
+    """Führt ein Firmware-Update über die Weboberfläche durch (nach Login)."""
+    if not self.is_logged_in_and_menu_ready():
+        print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
+        return False
+    if not firmware_path or not os.path.exists(firmware_path):
+        print(f"❌ Firmware-Datei nicht gefunden unter: {firmware_path}")
+        return False
+
+    print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
+
+    try:
+        # Navigation zum Update-Menü
+        if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+        time.sleep(1)
+        if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
+        time.sleep(1)
+        if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]',
+                                    timeout=5): return False
+        time.sleep(2)
+
+        # Optional: Checkbox zum Sichern der Einstellungen deaktivieren
+        try:
+            checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=3)
+            if checkbox.is_selected():
+                checkbox.click()
+                print("☑️ Checkbox 'Einstellungen sichern' deaktiviert.")
+        except Exception:
+            print("ℹ️ Checkbox 'Einstellungen sichern' nicht gefunden, wird übersprungen.")
+
+        # Pfad zur Firmware-Datei eintragen und Update starten
+        if not self.browser.schreiben('//*[@id="uiFile"]', firmware_path):
+            print("❌ Fehler beim Eintragen des Firmware-Pfads.")
+            return False
+
+        # Klick auf "Update starten"
+        if not self.browser.klicken('//*[@id="uiUpdate"]'):
+            print("❌ Fehler beim Klicken auf 'Update starten'.")
+            return False
+
+        print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
+        print("⏳ Der Workflow wird nach dem Neustart mit der Überprüfung der Erreichbarkeit fortgesetzt.")
+        # Die Methode kehrt sofort zurück. Der Orchestrator muss warten und neu verbinden.
+        return True
+
+    except Exception as e:
+        print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
+        return False

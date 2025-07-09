@@ -99,102 +99,99 @@ class WorkflowOrchestrator:
         self._fenster_in_vordergrund_holen()
 
         try:
-            # 1. FritzBox Erreichbarkeit prüfen
             if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen", self.fritzbox.warte_auf_erreichbarkeit):
                 return None
-
-            # 2. Login durchführen
-            # Das Passwort wird nun direkt an die Login-Methode übergeben
             if not self._run_step_with_retry("Login durchführen", self.fritzbox.login, password):
-                return None # Abbruch, wenn Login fehlschlägt
-
-            # 3. Box-Modell ermitteln
-            # get_box_model setzt self.fritzbox.box_model
+                return None
             if not self._run_step_with_retry("Box-Modell ermitteln", self.fritzbox.get_box_model):
                 return None
-
-            # 4. Firmware-Version ermitteln
-            # get_firmware_version setzt self.fritzbox.os_version
             if not self._run_step_with_retry("Firmware-Version ermitteln", self.fritzbox.get_firmware_version):
                 return None
 
-            # 5. Firmware-Pfad ermitteln (automatisch oder manuell)
+            # NEUER SCHRITT: Erweiterte Ansicht bei alten Versionen aktivieren
+            if not self._run_step_with_retry("Erweiterte Ansicht prüfen/aktivieren",
+                                             self.fritzbox.activate_expert_mode_if_needed):
+                return None
+
             firmware_path = self.firmware_manager.get_firmware_path(self.fritzbox.box_model)
             if not firmware_path:
-                print("❌ Firmware-Pfad konnte nicht ermittelt werden. Abbruch des Updates.")
-                # Hier könnten wir den Benutzer fragen, ob er trotzdem fortfahren möchte (ohne Update)
-                if not self._run_step_with_retry("Trotzdem fortfahren? (Update überspringen)", lambda: True): # Trick: immer True, aber Abfrage
+                print("❌ Firmware-Pfad konnte nicht ermittelt werden. Update wird übersprungen.")
+                if input("Möchten Sie trotzdem fortfahren (ohne Update)? (j/n): ").lower() != 'j':
                     return None
-            else:
-                # 6. Firmware-Update oder Reset basierend auf Version und Modell
-                # Hier die Logik zur Entscheidung, ob Update oder Reset oder beides
+
+            # Logik für Entscheidung: Update oder Reset
+            perform_update = False
+            perform_reset = False
+
+            if self.fritzbox.box_model != "UNKNOWN" and firmware_path:
                 target_version = self.firmware_manager.firmware_mapping.get(self.fritzbox.box_model)
-
-                perform_update = False
-                perform_reset = False
-
-                if self.fritzbox.box_model == "UNKNOWN" or self.fritzbox.box_model is None:
-                    print("⚠️ Box-Modell unbekannt. Keine spezifische Firmware-Logik anwendbar.")
-                    # Hier könnte man den Benutzer fragen, ob er ein generisches Update/Reset möchte
-                    if input("Möchten Sie trotzdem ein Update/Reset versuchen? (j/n): ").lower() == 'j':
-                         # Wenn der Benutzer 'j' sagt, versuchen wir, das Update mit dem ermittelten Pfad zu machen
-                         # oder einen Reset, wenn es 8.03 ist.
-                        if self.fritzbox.os_version == "8.03":
-                            perform_reset = True
-                        elif firmware_path: # nur wenn ein Pfad vorhanden ist
-                            perform_update = True
-                elif target_version and self.fritzbox.os_version != target_version:
-                    print(f"Firmware {self.fritzbox.box_model} sollte auf {target_version} sein. Aktuell: {self.fritzbox.os_version}")
-                    perform_update = True
-                elif self.fritzbox.os_version == "8.03": # TIM-spezifische Reset-Logik
-                    print("🔁 Version 8.03 erkannt – Reset statt Update (TIM-Spezifisch).")
-                    perform_reset = True
-                else:
-                    print(f"ℹ️ Firmware ist aktuell ({self.fritzbox.os_version}) für {self.fritzbox.box_model} oder kein spezifisches Update nötig.")
-                    # Optional: Wenn kein Update nötig, fragen, ob Reset gewünscht ist
-                    if input("Möchten Sie die Box trotzdem auf Werkseinstellungen zurücksetzen? (j/n): ").lower() == 'j':
+                if self.fritzbox.os_version == "8.03":  # Annahme, dies ist TIM-spezifisch
+                    print("🔁 Version 8.03 erkannt – Reset statt Update wird empfohlen.")
+                    if input("Möchten Sie stattdessen einen Reset durchführen? (j/n): ").lower() == 'j':
                         perform_reset = True
+                elif target_version and target_version not in self.fritzbox.os_version:
+                    print(
+                        f"ℹ️ Update empfohlen: Aktuell ist '{self.fritzbox.os_version}', Ziel ist '{target_version}'.")
+                    if input("Möchten Sie das Firmware-Update durchführen? (j/n): ").lower() == 'j':
+                        perform_update = True
+                else:
+                    print(f"✅ Firmware ist aktuell ({self.fritzbox.os_version}).")
 
-                if perform_update and firmware_path:
-                    if not self._run_step_with_retry("Firmware-Update durchführen", self.fritzbox.perform_firmware_update, firmware_path):
-                        return None
-                    # Nach dem Update ist die Box oft im Sprachauswahl-Modus oder braucht einen erneuten Login
-                    # Warte auf erneute Erreichbarkeit und Login nach Update
-                    if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen (nach Update)", self.fritzbox.warte_auf_erreichbarkeit):
-                        return None
-                    if not self._run_step_with_retry("Erneuter Login nach Update", self.fritzbox.login, password):
-                        return None
-                    # Version und Modell nach Update erneut prüfen, da sie sich geändert haben könnten
-                    self._run_step_with_retry("Box-Modell erneut ermitteln (nach Update)", self.fritzbox.get_box_model)
-                    self._run_step_with_retry("Firmware-Version erneut ermitteln (nach Update)", self.fritzbox.get_firmware_version)
+            if not perform_update and not perform_reset:
+                if input("Möchten Sie die Box trotzdem auf Werkseinstellungen zurücksetzen? (j/n): ").lower() == 'j':
+                    perform_reset = True
 
-                if perform_reset:
-                    # Entscheide, welche Reset-Methode verwendet werden soll
-                    # Hier könntest du eine Logik einbauen, z.B. wenn kein Login möglich ist, den "Passwort vergessen"-Reset nutzen
-                    if self.fritzbox.is_logged_in:
-                        if not self._run_step_with_retry("Werkseinstellungen über UI", self.fritzbox.perform_factory_reset_from_ui):
-                            return None
-                    else:
-                        if not self._run_step_with_retry("Werkseinstellungen via 'Passwort vergessen'", self.fritzbox.reset_via_forgot_password):
-                            return None
-
-                    # Nach dem Reset ist die Box definitiv ausgeloggt und im Sprachauswahl-Modus
-                    # Warte auf erneute Erreichbarkeit und setze Sprache
-                    if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen (nach Reset)", self.fritzbox.warte_auf_erreichbarkeit):
+            if perform_update and firmware_path:
+                if self._run_step_with_retry("Firmware-Update durchführen", self.fritzbox.perform_firmware_update,
+                                             firmware_path):
+                    print("⏳ Warte 180 Sekunden auf den Neustart der Box nach dem Update...")
+                    time.sleep(180)
+                    if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen (nach Update)",
+                                                     self.fritzbox.warte_auf_erreichbarkeit, versuche=30, delay=10):
                         return None
-                    # Sprache auf Englisch setzen
-                    if not self._run_step_with_retry("Sprache auf Englisch setzen", self.fritzbox.set_language, "en"):
-                         return None
-                    # Nach Reset ist Login erforderlich
-                    if not self._run_step_with_retry("Erneuter Login nach Reset", self.fritzbox.login, password):
+                    if not self._run_step_with_retry("Erneuter Login nach Update", self.fritzbox.login, password,
+                                                     force_reload=True):
+                        return None
+                    self._run_step_with_retry("Firmware-Version erneut ermitteln", self.fritzbox.get_firmware_version)
+                else:
+                    return None  # Abbruch, wenn Update fehlschlägt
+
+            if perform_reset:
+                if self.fritzbox.is_logged_in:
+                    if not self._run_step_with_retry("Werkseinstellungen über UI",
+                                                     self.fritzbox.perform_factory_reset_from_ui):
+                        return None
+                else:  # Fallback, falls nicht eingeloggt
+                    if not self._run_step_with_retry("Werkseinstellungen via 'Passwort vergessen'",
+                                                     self.fritzbox.reset_via_forgot_password):
                         return None
 
-            # 7. WLAN-Antennen prüfen
+                print("⏳ Warte 120 Sekunden auf den Neustart der Box nach dem Reset...")
+                time.sleep(120)
+                if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen (nach Reset)",
+                                                 self.fritzbox.warte_auf_erreichbarkeit, versuche=30, delay=10):
+                    return None
+                if self.fritzbox.ist_sprachauswahl():
+                    self.fritzbox.set_language("en")  # Sprache auf Englisch setzen
+                if not self._run_step_with_retry("Erneuter Login nach Reset", self.fritzbox.login, password,
+                                                 force_reload=True):
+                    return None
+
             if not self._run_step_with_retry("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas):
                 return None
 
             print("\n🎉 Workflow erfolgreich abgeschlossen!")
-            return None # Kein Restart notwendig
+
+            # Frage nach der nächsten Aktion
+            while True:
+                auswahl = input("\n(B)eenden oder (N)eue FritzBox bearbeiten? ").strip().lower()
+                if auswahl == 'n':
+                    return "restart"
+                elif auswahl == 'b':
+                    return None
+                else:
+                    print("❓ Ungültige Eingabe.")
+
 
         except RuntimeError as e:
             if str(e) == "RESTART_NEW_BOX":
