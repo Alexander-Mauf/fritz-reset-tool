@@ -800,7 +800,7 @@ class FritzBox:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def activate_expert_mode_if_needed(self) -> bool:
-        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks und explizitem Warten."""
+        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
         if not self.os_version: return True
 
@@ -810,16 +810,14 @@ class FritzBox:
         major, minor = int(match.group(1)), int(match.group(2))
 
         if major < 7 or (major == 7 and minor < 15):
-            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
+            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird umgeschaltet.")
             try:
                 # Schritt 1: Klick auf das Menü-Icon mit JS erzwingen
                 print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
                 menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
                 self.browser.driver.execute_script("arguments[0].click();", menu_icon)
 
-                # KORREKTUR: Wir warten jetzt explizit darauf, dass das Menü aufgeklappt ist.
-                # Ein aufgeklapptes Menü hat oft ein 'aria-expanded="true"' Attribut.
-                # Wir geben ihm 5 Sekunden Zeit, um zu erscheinen.
+                # Warten, bis das Menü aufgeklappt ist
                 print("...warte darauf, dass das Menü vollständig geöffnet ist.")
                 WebDriverWait(self.browser.driver, 5).until(
                     EC.presence_of_element_located(
@@ -827,21 +825,22 @@ class FritzBox:
                 )
                 print("...Menü ist geöffnet.")
 
-                # Schritt 2: Klick auf die Checkbox ebenfalls mit JS erzwingen
-                checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
-                if not checkbox.is_selected():
-                    print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
-                    print("...erzwinge Klick auf Checkbox mit JavaScript.")
-                    self.browser.driver.execute_script("arguments[0].click();", checkbox)
-                    print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                    time.sleep(2)  # Kurze Pause nach der Aktivierung
-                else:
-                    print("✅ Erweiterte Ansicht ist bereits aktiv.")
+                # Schritt 2: Klick auf den Link "Erweiterte Ansicht"
+                # KORREKTUR: Es wird nach einem <a>-Tag gesucht und einfach geklickt.
+                print("...suche den Link 'Erweiterte Ansicht'.")
+                expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
 
+                print("...erzwinge Klick auf den Link mit JavaScript.")
+                self.browser.driver.execute_script("arguments[0].click();", expert_link)
+
+                print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
+                # Nach dem Klick lädt die Seite oft neu oder der Zustand ändert sich.
+                # Eine kurze Pause ist hier sinnvoll, um dem Browser Zeit zu geben.
+                time.sleep(3)
                 return True
 
             except Exception as e:
-                print(f"❌ Fehler beim Aktivieren der erweiterten Ansicht: {e}")
+                print(f"❌ Fehler beim Umschalten der erweiterten Ansicht: {e}")
                 return False
         else:
             print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
