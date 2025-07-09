@@ -800,7 +800,7 @@ class FritzBox:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def activate_expert_mode_if_needed(self) -> bool:
-        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht, falls nötig."""
+        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks."""
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
         if not self.os_version: return True
 
@@ -812,24 +812,23 @@ class FritzBox:
         if major < 7 or (major == 7 and minor < 15):
             print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird geprüft/aktiviert.")
             try:
-                # KORREKTUR: Wir erzwingen den Klick mit JavaScript, um das "intercepted"-Problem zu umgehen.
-                print("...versuche direkten JavaScript-Klick auf das Menü-Icon, um Verdeckung zu umgehen.")
+                # Schritt 1: Klick auf das Menü-Icon mit JS erzwingen
+                print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
                 menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
                 self.browser.driver.execute_script("arguments[0].click();", menu_icon)
-                time.sleep(2)  # Wichtig: Kurz warten, damit das Menü aufklappen kann.
+                time.sleep(2)
 
+                # Schritt 2: Klick auf die Checkbox ebenfalls mit JS erzwingen
                 checkbox = self.browser.sicher_warten('//input[@id="expert"]', timeout=5)
                 if not checkbox.is_selected():
                     print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
-                    if self.browser.klicken(checkbox):
-                        print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
-                        time.sleep(2)  # Warten, bis die Seite die Änderung verarbeitet hat.
-                    else:
-                        return False
+                    print("...erzwinge Klick auf Checkbox mit JavaScript.")
+                    self.browser.driver.execute_script("arguments[0].click();", checkbox)
+                    print("✅ Erweiterte Ansicht erfolgreich aktiviert.")
+                    time.sleep(2)
                 else:
                     print("✅ Erweiterte Ansicht ist bereits aktiv.")
 
-                # Das Menü sollte sich von allein schließen oder durch die nächste Aktion nicht mehr stören.
                 return True
 
             except Exception as e:
