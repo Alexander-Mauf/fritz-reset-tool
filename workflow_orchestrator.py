@@ -147,8 +147,11 @@ class WorkflowOrchestrator:
 
             # Durchführung
             if perform_update:
-                if self._run_step_with_retry("Firmware-Update durchführen", self.fritzbox.perform_firmware_update,
-                                             firmware_path):
+                # KORREKTUR: Der Aufruf wird in eine Lambda-Funktion gekapselt.
+                # Das stellt sicher, dass das 'firmware_path'-Argument korrekt übergeben wird.
+                update_step = lambda: self.fritzbox.perform_firmware_update(firmware_path)
+
+                if self._run_step_with_retry("Firmware-Update durchführen", update_step):
                     print("⏳ Warte 180 Sekunden auf den Neustart der Box nach dem Update...")
                     time.sleep(180)
                     # Nach dem Update ist eine komplette Neuanmeldung nötig
