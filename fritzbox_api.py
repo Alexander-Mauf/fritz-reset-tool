@@ -25,7 +25,7 @@ class FirmwareManager:
     def __init__(self):
         self.firmware_mapping = {
             "7590": {
-                "bridge": "07.13",
+                "bridge": "07.17",
                 "final": "08.03",
                 "bridge_file": "FRITZ.Box_7590-07.17.image", # Beispielhafter Dateiname
                 "final_file": "FRITZ.Box_7590-08.03.image"
@@ -858,7 +858,10 @@ class FritzBox:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def perform_firmware_update(self, firmware_path: str) -> bool:
-        """Führt ein Firmware-Update über die Weboberfläche durch (nach Login)."""
+        """
+        Führt ein Firmware-Update durch und beachtet dabei die korrekte, sequenzielle
+        Freischaltung der UI-Elemente (Checkbox -> Dateifeld -> Update-Button).
+        """
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
             return False
@@ -869,20 +872,46 @@ class FritzBox:
         print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
         try:
-            # Navigation zum Update-Menü
+            # Schritt 1: Navigation zum Update-Menü
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             time.sleep(1)
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
             time.sleep(1)
-            if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]', timeout=5): return False
-            time.sleep(2)
 
-            # Pfad zur Firmware-Datei eintragen
-            if not self.browser.schreiben('//*[@id="uiFile"]', firmware_path):
+            # Schritt 2: Klick auf den Tab "FRITZ!OS-Datei"
+            if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]', timeout=5): return False
+            time.sleep(1)
+
+            # --- Ab hier die neue, robustere Logik ---
+
+            # Schritt 3a: Explizit auf die Checkbox warten, um sicherzustellen, dass die Seite geladen ist.
+            print("...warte auf die Seite für das Date-Update.")
+            try:
+                checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
+            except Exception as e:
+                print(f"❌ Die Seite für das Firmware-Update konnte nicht geladen werden (Checkbox nicht gefunden): {e}")
+                return False
+
+            # Schritt 3b: Checkbox deaktivieren, falls sie ausgewählt ist.
+            if checkbox.is_selected():
+                print("...deaktiviere die Checkbox 'Einstellungen sichern'.")
+                self.browser.klicken(checkbox)
+                time.sleep(1) # Kurze Pause, damit die UI reagieren kann
+
+            # Schritt 3c: Jetzt, nach der Interaktion mit der Checkbox, auf das Datei-Eingabefeld warten.
+            print("...warte auf das Datei-Eingabefeld.")
+            try:
+                file_input = self.browser.sicher_warten('//*[@id="uiFile"]', timeout=10)
+            except Exception as e:
+                print(f"❌ Das Datei-Eingabefeld ist nicht erschienen: {e}")
+                return False
+
+            # Schritt 4: Pfad zur Firmware-Datei eintragen
+            if not self.browser.schreiben(file_input, firmware_path):
                 print("❌ Fehler beim Eintragen des Firmware-Pfads.")
                 return False
 
-            # Klick auf "Update starten"
+            # Schritt 5: Klick auf "Update starten"
             if not self.browser.klicken('//*[@id="uiUpdate"]'):
                 print("❌ Fehler beim Klicken auf 'Update starten'.")
                 return False
@@ -894,54 +923,3 @@ class FritzBox:
         except Exception as e:
             print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
             return False
-
-
-def perform_firmware_update(self, firmware_path: str) -> bool:
-    """Führt ein Firmware-Update über die Weboberfläche durch (nach Login)."""
-    if not self.is_logged_in_and_menu_ready():
-        print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
-        return False
-    if not firmware_path or not os.path.exists(firmware_path):
-        print(f"❌ Firmware-Datei nicht gefunden unter: {firmware_path}")
-        return False
-
-    print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
-
-    try:
-        # Navigation zum Update-Menü
-        if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
-        time.sleep(1)
-        if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
-        time.sleep(1)
-        if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]',
-                                    timeout=5): return False
-        time.sleep(2)
-
-        # Optional: Checkbox zum Sichern der Einstellungen deaktivieren
-        try:
-            checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=3)
-            if checkbox.is_selected():
-                checkbox.click()
-                print("☑️ Checkbox 'Einstellungen sichern' deaktiviert.")
-        except Exception:
-            print("ℹ️ Checkbox 'Einstellungen sichern' nicht gefunden, wird übersprungen.")
-
-        # Pfad zur Firmware-Datei eintragen und Update starten
-        if not self.browser.schreiben('//*[@id="uiFile"]', firmware_path):
-            print("❌ Fehler beim Eintragen des Firmware-Pfads.")
-            return False
-
-        # Klick auf "Update starten"
-        if not self.browser.klicken('//*[@id="uiUpdate"]'):
-            print("❌ Fehler beim Klicken auf 'Update starten'.")
-            return False
-
-        print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
-        print("⏳ Der Workflow wird nach dem Neustart mit der Überprüfung der Erreichbarkeit fortgesetzt.")
-        # Die Methode kehrt sofort zurück. Der Orchestrator muss warten und neu verbinden.
-        return True
-
-    except Exception as e:
-        print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
-        time.sleep(15)
-        return False
