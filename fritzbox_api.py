@@ -474,49 +474,47 @@ class FritzBox:
         print("🔍 Prüfe, ob erweiterte Ansicht aktiv ist (via Update-Reiter-Status)...")
         if not self.os_version: return True
 
-        match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
+        # Extrahiert die Versionsnummer, um zu entscheiden, ob die Prüfung nötig ist
+        match = re.search(r'(\d{1,2})\.(\d{2})', self.os_version)
         if not match: return True
-
         major, minor = int(match.group(1)), int(match.group(2))
 
+        # Bei alten Versionen ist die erweiterte Ansicht oft nicht standardmäßig aktiv
         if major < 7 or (major == 7 and minor < 15):
             try:
-                # Schritt 1: Gehe zur Update-Seite
                 print("...navigiere zur Update-Seite, um den Status zu prüfen.")
-                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
-                time.sleep(1)
-                if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
+                # VERSUCH 1: Klicke direkt auf "Update", falls Menü schon offen ist
+                if not self.browser.klicken('//*[@id="mUp"]', timeout=2, versuche=1):
+                    # VERSUCH 2: Wenn das fehlschlägt, klicke erst auf "System" und dann auf "Update"
+                    print("...'Update'-Menü nicht direkt sichtbar, öffne 'System'-Menü.")
+                    if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                    time.sleep(1)
+                    if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
+
                 time.sleep(2)  # Warten, bis die Seite und ihre Elemente geladen sind
 
-                # Schritt 2: Prüfe den Zustand des "FRITZ!OS-Datei"-Reiters
+                # Prüfe den Zustand des "FRITZ!OS-Datei"-Reiters
                 update_tab = self.browser.sicher_warten('//*[@id="userUp"]', timeout=5)
-
-                # Ein deaktivierter Reiter hat oft eine CSS-Klasse wie 'disabled'.
-                # .is_enabled() funktioniert bei <a>-Tags oft nicht zuverlässig.
                 is_disabled = "disabled" in update_tab.get_attribute("class")
 
                 if is_disabled:
-                    # Schritt 3: Nur wenn der Reiter deaktiviert ist, den Modus umschalten.
-                    print("...Reiter 'FRITZ!OS-Datei' ist deaktiviert. Aktiviere erweiterte Ansicht.")
-
-                    # Menü öffnen
-                    menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
+                    print("...'FRITZ!OS-Datei' ist deaktiviert. Aktiviere erweiterte Ansicht.")
+                    # Menü (Burger-Icon) öffnen
+                    menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5)
                     self.browser.driver.execute_script("arguments[0].click();", menu_icon)
                     WebDriverWait(self.browser.driver, 5).until(
                         EC.presence_of_element_located(
                             (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
                     )
-
-                    # Link klicken
+                    # Link für erweiterte Ansicht klicken
                     expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
                     self.browser.driver.execute_script("arguments[0].click();", expert_link)
-
                     print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
-                    time.sleep(3)  # Warten, bis die Seite die Änderung verarbeitet
+                    time.sleep(3)
                 else:
-                    print("✅ Erweiterte Ansicht ist bereits aktiv (Update-Reiter ist klickbar).")
+                    print("✅ Erweiterte Ansicht ist bereits aktiv.")
 
-                # Zum Schluss zur Hauptseite zurückkehren, um einen sauberen Zustand zu hinterlassen.
+                # Zurück zur Hauptseite für einen sauberen Zustand
                 self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
                 return True
 
@@ -529,68 +527,67 @@ class FritzBox:
 
     def perform_factory_reset_from_ui(self) -> bool:
         """
-        Setzt die FritzBox über die Benutzeroberfläche auf Werkseinstellungen zurück.
-        Diese Methode ist hybrid und versucht Pfade für alte und neue OS-Versionen.
+        Setzt die FritzBox auf Werkseinstellungen zurück und stellt vorher
+        einen sauberen UI-Zustand sicher.
         """
         if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für UI-Reset erforderlich.")
+            print("❌ Nicht eingeloggt. Login für UI-Reset erforderlich.")
             return False
 
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
-            # Schritt 1: Klick auf "System" (konsistent über die meisten Versionen)
-            if not self.browser.klicken('//*[@id="sys"]', timeout=5):
-                print("Konnte nicht auf 'System' klicken.")
-                return False
+            # UI-Zustand stabilisieren
+            print("...navigiere zur Hauptseite für einen sauberen Start.")
+            self._close_any_overlay()
+            self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
             time.sleep(1)
 
-            # Schritt 2: Klick auf "Sicherung" (kombiniert alte und neue Selektoren)
-            backup_selectors = [
-                '//*[@id="mSave"]',  # ID für neuere Versionen
-                '//a[contains(@href, "backup.lua")]',  # Link-Struktur für ältere Versionen
-                '//a[contains(text(), "Sicherung")]'  # Text-basierter Fallback
-            ]
-            if not self.browser.klicken(backup_selectors, timeout=5):
-                print("Konnte den Menüpunkt 'Sicherung' nicht finden.")
-                return False
+            # VERSUCH 1: Klicke direkt auf "Sicherung", falls Menü schon offen
+            if not self.browser.klicken('//*[@id="mSave"] | //a[contains(@href, "backup.lua")]', timeout=2, versuche=1):
+                # VERSUCH 2: Wenn das fehlschlägt, klicke erst auf "System"
+                print("...'Sicherung' nicht direkt sichtbar, öffne 'System'-Menü.")
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5):
+                    print("Konnte nicht auf 'System' klicken.")
+                    return False
+                time.sleep(1)
+                # Und dann auf "Sicherung"
+                if not self.browser.klicken('//*[@id="mSave"] | //a[contains(@href, "backup.lua")]', timeout=5):
+                    print("Konnte den Menüpunkt 'Sicherung' nicht finden.")
+                    return False
+
             time.sleep(1)
 
-            # Schritt 3: Klick auf den Tab "Werkseinstellungen"
-            factory_reset_tab_selectors = [
-                '//*[@id="default"]',  # Standard-ID für den Tab
-                '//a[contains(text(), "Werkseinstellungen")]'  # Text-basierter Fallback
-            ]
-            if not self.browser.klicken(factory_reset_tab_selectors, timeout=5):
+            # Navigation zum Tab "Werkseinstellungen"
+            if not self.browser.klicken('//*[@id="default"] | //a[contains(text(), "Werkseinstellungen")]', timeout=5):
                 print("Konnte nicht auf den Tab 'Werkseinstellungen' klicken.")
                 return False
             time.sleep(1)
 
-            # Schritt 4: Klick auf den finalen Bestätigungs-Button (kombiniert mehrere Möglichkeiten)
+            # Klick auf den finalen Bestätigungsbutton
             confirm_button_xpaths = [
-                '//*[@id="uiDefaults"]',  # Spezifische ID für ältere Versionen (dein Fund)
-                '//*[@id="content"]/div/button',  # Häufige Struktur bei neueren Versionen
-                '//button[contains(text(), "Werkseinstellungen laden")]',  # Text auf neueren Buttons
-                '//button[contains(text(), "Wiederherstellen")]'  # Alternativer Text
+                '//*[@id="uiDefaults"]',
+                '//*[@id="content"]/div/button',
+                '//button[contains(text(), "Werkseinstellungen laden")]'
             ]
-
             found_confirm_button = False
             for xpath in confirm_button_xpaths:
-                if self.browser.klicken(xpath, timeout=2):  # Kurzer Timeout, da wir mehrere XPaths testen
-                    print(f"✅ Bestätigungs-Button gefunden und geklickt ({xpath}).")
+                if self.browser.klicken(xpath, timeout=2, versuche=1):
+                    print(f"✅ Bestätigungs-Button geklickt ({xpath}).")
                     found_confirm_button = True
                     break
 
             if not found_confirm_button:
                 print("Konnte keinen Bestätigungsbutton für die Werkseinstellungen finden.")
                 return False
+
             time.sleep(3)
 
         except Exception as e:
             print(f"❌ Fehler im Reset-Ablauf über UI-Menü: {e}")
             return False
 
-        # Schritt 5: Auf physische Bestätigung warten (sollte für alle Versionen gleich sein)
+        # Warten auf die physische Bestätigung an der Box
         print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken (falls erforderlich)...")
         try:
             ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
@@ -598,12 +595,12 @@ class FritzBox:
             btn.click()
             print("✅ OK-Button geklickt nach physischer Bestätigung.")
             self.is_reset = True
-            time.sleep(25)  # Zeit für den Neustart-Prozess geben
+            time.sleep(25)  # Zeit für den Neustart geben
             if self.ist_sprachauswahl():
                 print("✅ Erfolgreich auf Werkseinstellungen zurückgesetzt.")
                 return True
             else:
-                print("⚠️ Reset abgeschlossen, aber Sprachauswahl nicht verifiziert. Bitte manuell prüfen.")
+                print("⚠️ Reset abgeschlossen, aber Sprachauswahl nicht verifiziert.")
                 return True
         except Exception as e:
             print(f"❌ Fehler beim Warten auf den finalen OK-Klick: {e}")
@@ -855,9 +852,9 @@ class FritzBox:
 
                             signal_title = cols[0].get_attribute("title").strip()
                             name = cols[1].text.strip()
-                            channel = cols[2].text.strip()
+                            freq = cols[2].text.strip() # this is apparently freq in the old Version
                             mac = cols[3].text.strip()
-                            freq = "5 GHz" if int(channel) > 14 else "2,4 GHz"
+                            channel = cols[4].text.strip() # fragwürdig
                             self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
                         except Exception as e:
                             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}: {e}")
