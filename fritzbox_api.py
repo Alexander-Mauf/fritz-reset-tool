@@ -234,7 +234,7 @@ class FritzBox:
         max_dialog_attempts = 15
         print("...starte Abarbeitung aller möglichen Dialoge...")
         dialog_handlers = [
-            self.handle_registration_dialog, # <--- NEU HINZUGEFÜGT
+            self.handle_registration_dialog,
             self.neue_firmware_dialog,
             self.dsl_setup_init,
             self.checkbox_fehlerdaten_dialog,
@@ -257,15 +257,16 @@ class FritzBox:
             # Versuche, einen der spezifischen Dialoge zu behandeln
             action_taken = False
             for handler in dialog_handlers:
-                if handler(): # Ruft die Funktion auf (z.B. self.neue_firmware_dialog())
+                if handler():
                     action_taken = True
-                    break # Nach einer erfolgreichen Aktion starten wir die Runde neu
+                    break
 
-            # Wenn kein spezifischer Dialog zugetroffen hat, versuche den Fallback "Übernehmen"
+            # KORREKTUR: Wenn kein spezifischer Handler zugetroffen hat,
+            # wird jetzt die robuste Fallback-Methode aufgerufen.
             if not action_taken:
-                print("   ...kein spezifischer Dialog gefunden, versuche Fallback 'Übernehmen'.")
-                # Wir nutzen hier einen Klick-Versuch, der nicht fehlschlägt, wenn der Button nicht da ist
-                self.browser.klicken('//*[@id="uiApply"]', timeout=1, versuche=1)
+                print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
+                # Ruft jetzt die korrekte und robuste Methode auf.
+                self._handle_any_dialog_button()
 
             time.sleep(1.5) # Pause zwischen den Runden
 
@@ -311,6 +312,33 @@ class FritzBox:
 
         return True
 
+    def _handle_any_dialog_button(self) -> bool:
+        """
+        Sucht nach einer Liste von generischen "positiven" Buttons (OK, Weiter, etc.)
+        und klickt den ersten, den er findet. Gibt True zurück, wenn ein Klick erfolgte.
+        """
+        # Priorisierte Liste von Buttons. Spezifische IDs und Namen zuerst.
+        positive_buttons_xpaths = [
+            '//*[@id="uiApply"]',
+            '//button[@name="apply"]',  # <--- NEU basierend auf deinem Feedback
+            '//*[@id="uiForward"]',
+            '//button[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
+            '//a[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
+            '//button[contains(translate(text(), "OK", "ok"), "ok")]',
+            '//a[contains(translate(text(), "OK", "ok"), "ok")]',
+            '//button[contains(translate(text(), "ÜBERNEHMEN", "übernehmen"), "übernehmen")]',
+            '//button[contains(translate(text(), "FERTIGSTELLEN", "fertigstellen"), "fertigstellen")]',
+            '//*[@id="submit_button"]',
+            '//*[@id="Button1"]'
+        ]
+
+        for xpath in positive_buttons_xpaths:
+            # Wir nutzen einen sehr kurzen Timeout, da wir nur prüfen, ob der Button gerade da ist.
+            if self.browser.klicken(xpath, timeout=0.5, versuche=1):
+                print(f"✅ Generischen Dialog-Button geklickt: {xpath}")
+                return True
+        return False
+
     def neue_firmware_dialog(self) -> bool:
         """Behandelt den Dialog 'Neue Firmware wurde installiert'."""
         try:
@@ -351,17 +379,27 @@ class FritzBox:
         return False
 
     def _close_any_overlay(self) -> bool:
-        """Sucht nach einem generischen "Schließen"-Button in einem Overlay und klickt ihn."""
+        """
+        Sucht nach einem generischen "Schließen"-Button und klickt ihn, falls vorhanden.
+        Diese Version ist "crash-sicher" und verursacht keinen Fehler, wenn nichts gefunden wird.
+        """
         try:
-            # Dieser XPath sucht nach einem Button, der irgendwo das Wort "Schließen" enthält.
-            close_button_xpath = '//button[.//div[text()="Schließen"] or text()="Schließen"]'
-            # Kurzer Timeout, da es nur ein schneller Check ist.
-            if self.browser.klicken(close_button_xpath, timeout=2, versuche=1):
+            # Wir verwenden find_elements (plural), was eine leere Liste zurückgibt statt einen Fehler zu werfen.
+            close_buttons = self.browser.driver.find_elements(By.XPATH,
+                                                              '//button[.//div[text()="Schließen"] or text()="Schließen"]')
+
+            # Nur wenn die Liste nicht leer ist, also ein Button gefunden wurde:
+            if close_buttons:
+                print("...generisches Overlay gefunden, versuche es zu schließen.")
+                # Klicke den ersten gefundenen Button mit einem sicheren JS-Klick
+                self.browser.driver.execute_script("arguments[0].click();", close_buttons[0])
                 print("✅ Generisches Overlay geschlossen.")
                 time.sleep(1)
                 return True
-        except Exception:
-            pass  # Kein Overlay gefunden, alles gut.
+        except Exception as e:
+            # Fängt alle anderen möglichen Fehler ab, um Abstürze zu vermeiden.
+            print(f"⚠️ Kleiner Fehler beim Versuch, ein Overlay zu schließen (wird ignoriert): {e}")
+            pass
         return False
 
     def handle_registration_dialog(self) -> bool:
@@ -602,51 +640,75 @@ class FritzBox:
 
         # fritzbox_api.py
 
-    def get_box_model(self) -> str | None:
-            """Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie."""
-            print("🔍 Ermittle Box-Modell (robuste Methode)...")
-            self._close_any_overlay()  # Zuerst prüfen, ob ein Overlay im Weg ist.
-            if not self.is_logged_in_and_menu_ready():
-                print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
-                return None
+    def get_box_model(self) -> str | bool:
+        """
+        Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie.
+        Gibt bei Fehlschlag False zurück, um den Workflow korrekt zu steuern.
+        """
+        print("🔍 Ermittle Box-Modell (robuste Methode)...")
+        self._close_any_overlay()
 
-            # (Der Rest der Methode bleibt exakt gleich wie zuvor)
-            # --- Stufe 1: Suche auf der aktuellen Seite ---
-            print("   (Stufe 1/3: Suche auf aktueller Seite)")
-            xpaths_to_check = [
-                '//*[@id="blueBarTitel"]',
-                '//span[contains(@class, "version_text")]',
-                '//div[@class="boxInfo"]/span'
-            ]
+        if not self.is_logged_in_and_menu_ready():
+            print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
+            return False
+
+        # --- Stufe 1: Suche auf der aktuellen Seite ---
+        print("   (Stufe 1/3: Suche auf aktueller Seite)")
+        xpaths_to_check = [
+            '//*[@id="blueBarTitel"]',
+            '//span[contains(@class, "version_text")]',
+            '//div[@class="boxInfo"]/span'
+        ]
+        for xpath in xpaths_to_check:
+            try:
+                element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                model = self._extract_model_number(element)
+                if model:
+                    self.box_model = model
+                    print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
+                    return self.box_model
+            except Exception:
+                continue
+
+        # --- Stufe 2: Navigation zur Übersichtsseite ---
+        print("   (Stufe 2/3: Suche auf Übersichtsseite)")
+        if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
+            time.sleep(2)
             for xpath in xpaths_to_check:
                 try:
                     element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
                     model = self._extract_model_number(element)
                     if model:
                         self.box_model = model
-                        print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
+                        print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
                         return self.box_model
                 except Exception:
                     continue
 
-            # --- Stufe 2: Navigation zur Übersichtsseite ---
-            print("   (Stufe 2/3: Suche auf Übersichtsseite)")
-            if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
-                time.sleep(2)
-                for xpath in xpaths_to_check:
-                    try:
-                        element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
-                        model = self._extract_model_number(element)
-                        if model:
-                            self.box_model = model
-                            print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
-                            return self.box_model
-                    except Exception:
-                        continue
+        print("❌ Box-Modell konnte nicht identifiziert werden.")
+        self.box_model = "UNKNOWN"
+        return False  # KORREKTUR: Bei Fehlschlag False zurückgeben, nicht None.
 
-            print("❌ Box-Modell konnte nicht identifiziert werden.")
-            self.box_model = "UNKNOWN"
+    def _extract_model_number(self, element) -> str | None:
+        """
+        Extrahiert die 4-stellige Modellnummer aus dem textContent eines Elements.
+        Diese Methode ist zuverlässiger als .text für unsichtbare Elemente.
+        """
+        try:
+            # .get_attribute("textContent") liest Text auch aus versteckten Elementen
+            text_content = element.get_attribute("textContent").strip()
+
+            # Dieser Regex sucht einfach nach der ersten 4-stelligen Zahl.
+            match = re.search(r'(\d{4,})', text_content)
+            if match:
+                model_number = match.group(1)
+                # Fall für LTE-Modelle
+                if "LTE" in text_content:
+                    return f"{model_number}_LTE"
+                return model_number
+        except Exception:
             return None
+        return None
 
     def dsl_setup_wizard(self) -> bool:
         """Durchläuft den DSL-Setup-Wizard (falls er nach einem Reset/Update erscheint)."""
