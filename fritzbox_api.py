@@ -25,9 +25,9 @@ class FirmwareManager:
     def __init__(self):
         self.firmware_mapping = {
             "7590": {
-                "bridge": "07.13",
+                "bridge": "07.59",
                 "final": "08.03",
-                "bridge_file": "FRITZ.Box_7590-07.13.image", # Beispielhafter Dateiname
+                "bridge_file": "FRITZ.Box_7590-07.59.image", # Beispielhafter Dateiname
                 "final_file": "FRITZ.Box_7590-08.03.image"
             },
             "7530": {
@@ -879,7 +879,7 @@ class FritzBox:
     def perform_firmware_update(self, firmware_path: str) -> bool:
         """
         Führt ein Firmware-Update durch und beachtet dabei die korrekte, sequenzielle
-        Freischaltung der UI-Elemente (Checkbox -> Dateifeld -> Update-Button).
+        Freischaltung und Interaktion mit den UI-Elementen.
         """
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
@@ -891,19 +891,14 @@ class FritzBox:
         print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
         try:
-            # Schritt 1: Navigation zum Update-Menü
+            # Navigation zum Update-Menü
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             time.sleep(1)
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
             time.sleep(1)
-
-            # Schritt 2: Klick auf den Tab "FRITZ!OS-Datei"
             if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]', timeout=5): return False
             time.sleep(1)
 
-            # --- Ab hier die neue, robustere Logik ---
-
-            # Schritt 3a: Explizit auf die Checkbox warten, um sicherzustellen, dass die Seite geladen ist.
             print("...warte auf die Seite für das Date-Update.")
             try:
                 checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
@@ -911,13 +906,11 @@ class FritzBox:
                 print(f"❌ Die Seite für das Firmware-Update konnte nicht geladen werden (Checkbox nicht gefunden): {e}")
                 return False
 
-            # Schritt 3b: Checkbox deaktivieren, falls sie ausgewählt ist.
             if checkbox.is_selected():
                 print("...deaktiviere die Checkbox 'Einstellungen sichern'.")
                 checkbox.click()
-                time.sleep(1) # Kurze Pause, damit die UI reagieren kann
+                time.sleep(1)
 
-            # Schritt 3c: Jetzt, nach der Interaktion mit der Checkbox, auf das Datei-Eingabefeld warten.
             print("...warte auf das Datei-Eingabefeld.")
             try:
                 file_input = self.browser.sicher_warten('//*[@id="uiFile"]', timeout=10)
@@ -925,18 +918,15 @@ class FritzBox:
                 print(f"❌ Das Datei-Eingabefeld ist nicht erschienen: {e}")
                 return False
 
-            # Schritt 4: Pfad zur Firmware-Datei eintragen
-            if not self.browser.schreiben(file_input, firmware_path):
-                print("❌ Fehler beim Eintragen des Firmware-Pfads.")
-                return False
+            # KORREKTUR: .send_keys() wird direkt auf dem gefundenen Element aufgerufen.
+            file_input.send_keys(firmware_path)
+            print("✅ Firmware-Pfad erfolgreich eingetragen.")
 
-            # Schritt 5: Klick auf "Update starten"
             if not self.browser.klicken('//*[@id="uiUpdate"]'):
                 print("❌ Fehler beim Klicken auf 'Update starten'.")
                 return False
 
             print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
-            print("⏳ Der Workflow wird nach dem Neustart mit der Überprüfung der Erreichbarkeit fortgesetzt.")
             return True
 
         except Exception as e:
