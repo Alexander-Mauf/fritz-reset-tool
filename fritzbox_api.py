@@ -234,6 +234,7 @@ class FritzBox:
         max_dialog_attempts = 15
         print("...starte Abarbeitung aller möglichen Dialoge...")
         dialog_handlers = [
+            self.handle_registration_dialog, # <--- NEU HINZUGEFÜGT
             self.neue_firmware_dialog,
             self.dsl_setup_init,
             self.checkbox_fehlerdaten_dialog,
@@ -347,6 +348,33 @@ class FritzBox:
             return True
         except Exception:
             pass
+        return False
+
+    def _close_any_overlay(self) -> bool:
+        """Sucht nach einem generischen "Schließen"-Button in einem Overlay und klickt ihn."""
+        try:
+            # Dieser XPath sucht nach einem Button, der irgendwo das Wort "Schließen" enthält.
+            close_button_xpath = '//button[.//div[text()="Schließen"] or text()="Schließen"]'
+            # Kurzer Timeout, da es nur ein schneller Check ist.
+            if self.browser.klicken(close_button_xpath, timeout=2, versuche=1):
+                print("✅ Generisches Overlay geschlossen.")
+                time.sleep(1)
+                return True
+        except Exception:
+            pass  # Kein Overlay gefunden, alles gut.
+        return False
+
+    def handle_registration_dialog(self) -> bool:
+        """Behandelt den "Informiert bleiben"-Dialog."""
+        try:
+            # Eindeutiger Text dieses Dialogs
+            if self.browser.sicher_warten('//h1[contains(text(), "Informiert bleiben")]', timeout=1, sichtbar=False):
+                print("...behandle 'Informiert bleiben'-Dialog.")
+                # Klickt auf OK
+                self.browser.klicken('//*[@id="content"]/div[2]/button[1]', timeout=3, versuche=1)
+                return True
+        except Exception:
+            pass  # Dialog war nicht da.
         return False
 
     def skip_configuration(self) -> bool:
@@ -572,57 +600,53 @@ class FritzBox:
             print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
             return False  # KORREKTUR: Bei Fehler False zurückgeben
 
+        # fritzbox_api.py
+
     def get_box_model(self) -> str | None:
-        """Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie."""
-        print("🔍 Ermittle Box-Modell (robuste Methode)...")
-        if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
-            return None
+            """Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie."""
+            print("🔍 Ermittle Box-Modell (robuste Methode)...")
+            self._close_any_overlay()  # Zuerst prüfen, ob ein Overlay im Weg ist.
+            if not self.is_logged_in_and_menu_ready():
+                print("❌ Nicht eingeloggt. Login für Modellermittlung erforderlich.")
+                return None
 
-        # XPaths, die wir auf den verschiedenen Seiten prüfen
-        xpaths_to_check = [
-            '//*[@id="blueBarTitel"]',
-            '//span[contains(@class, "version_text")]',
-            '//div[@class="boxInfo"]/span'
-        ]
-
-        # --- Stufe 1: Suche auf der aktuellen Seite ---
-        print("   (Stufe 1/3: Suche auf aktueller Seite)")
-        for xpath in xpaths_to_check:
-            try:
-                # Wichtig: sichtbar=False, um versteckte Elemente wie 'hide' zu finden
-                element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
-                model = self._extract_model_number(element)
-                if model:
-                    self.box_model = model
-                    print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
-                    return self.box_model
-            except Exception:
-                continue
-
-        # --- Stufe 2: Navigation zur Übersichtsseite ---
-        print("   (Stufe 2/3: Suche auf Übersichtsseite)")
-        if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
-            time.sleep(2)
+            # (Der Rest der Methode bleibt exakt gleich wie zuvor)
+            # --- Stufe 1: Suche auf der aktuellen Seite ---
+            print("   (Stufe 1/3: Suche auf aktueller Seite)")
+            xpaths_to_check = [
+                '//*[@id="blueBarTitel"]',
+                '//span[contains(@class, "version_text")]',
+                '//div[@class="boxInfo"]/span'
+            ]
             for xpath in xpaths_to_check:
                 try:
                     element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
                     model = self._extract_model_number(element)
                     if model:
                         self.box_model = model
-                        print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
+                        print(f"✅ Box-Modell: {self.box_model} (gefunden auf aktueller Seite).")
                         return self.box_model
                 except Exception:
                     continue
 
-        # --- Stufe 3: Notfall-Fallback über Ereignis-Log ---
-        print("   (Stufe 3/3: Suche in System-Ereignissen)")
-        # Diese Stufe lassen wir vorerst weg, da sie selten nötig und komplex ist.
-        # Die ersten beiden Stufen mit der neuen Logik sollten das Problem lösen.
+            # --- Stufe 2: Navigation zur Übersichtsseite ---
+            print("   (Stufe 2/3: Suche auf Übersichtsseite)")
+            if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
+                time.sleep(2)
+                for xpath in xpaths_to_check:
+                    try:
+                        element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                        model = self._extract_model_number(element)
+                        if model:
+                            self.box_model = model
+                            print(f"✅ Box-Modell: {self.box_model} (gefunden auf Übersichtsseite).")
+                            return self.box_model
+                    except Exception:
+                        continue
 
-        print("❌ Box-Modell konnte nicht identifiziert werden.")
-        self.box_model = "UNKNOWN"
-        return None
+            print("❌ Box-Modell konnte nicht identifiziert werden.")
+            self.box_model = "UNKNOWN"
+            return None
 
     def dsl_setup_wizard(self) -> bool:
         """Durchläuft den DSL-Setup-Wizard (falls er nach einem Reset/Update erscheint)."""
@@ -714,13 +738,15 @@ class FritzBox:
             return False
 
     def check_wlan_antennas(self, max_versuche=2) -> bool:
-        """Prüft die WLAN-Antennen. Erkennt automatisch die UI-Version (alt vs. neu)."""
+        """
+        Prüft WLAN-Antennen; erkennt automatisch die UI-Version (modern vs. alt)
+        und ist gegen StaleElement-Fehler in beiden Fällen abgesichert.
+        """
         print("📡 WLAN-Antennen prüfen...")
+        self._close_any_overlay()
         if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für WLAN-Check erforderlich.")
             return False
 
-        # Navigation zum Funkkanal-Menü
         for versuch in range(1, max_versuche + 1):
             try:
                 if not self.browser.klicken('//*[@id="wlan"]', timeout=5): raise Exception(
@@ -730,42 +756,53 @@ class FritzBox:
                     "Konnte 'Funkkanal' nicht klicken.")
                 time.sleep(5)
 
-                # --- Automatische Erkennung der UI-Version ---
-                # Versuch 1: Moderne UI mit 'flexRow' Divs
-                rows = self.browser.driver.find_elements(By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]')
-                if rows:
-                    print(f"📶 Moderne UI erkannt. {len(rows)} Netzwerke gefunden.")
+                # --- Logik für MODERNE UI (div-basiert) ---
+                modern_row_xpath = '//div[@class="flexRow" and .//div[@prefid="rssi"]]'
+                num_modern_rows = len(self.browser.driver.find_elements(By.XPATH, modern_row_xpath))
+
+                if num_modern_rows > 0:
+                    print(f"📶 Moderne UI erkannt. {num_modern_rows} Netzwerke gefunden.")
                     print("\n📋 Ergebnisübersicht:\n")
-                    for i, row in enumerate(rows):
-                        name = row.find_element(By.XPATH, './/div[@prefid="name"]').text.strip()
-                        freq = row.find_element(By.XPATH, './/div[@prefid="band"]').text.strip()
-                        channel = row.find_element(By.XPATH, './/div[@prefid="channel"]').text.strip()
-                        mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
-                        signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute(
-                            "title").strip()
-                        self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                    for i in range(num_modern_rows):
+                        try:
+                            row = self.browser.driver.find_element(By.XPATH, f"({modern_row_xpath})[{i + 1}]")
+                            name = row.find_element(By.XPATH, './/div[@prefid="name"]').text.strip()
+                            freq = row.find_element(By.XPATH, './/div[@prefid="band"]').text.strip()
+                            channel = row.find_element(By.XPATH, './/div[@prefid="channel"]').text.strip()
+                            mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
+                            signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute(
+                                "title").strip()
+                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                        except Exception as e:
+                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}: {e}")
                     self.is_wifi_checked = True
                     return True
 
-                # Versuch 2: Alte UI mit 'table' (dein HTML-Beispiel)
-                table_rows = self.browser.driver.find_elements(By.XPATH, '//tbody[@id="uiScanResultBody"]/tr')
-                if table_rows:
-                    print(f"📶 Alte Tabellen-UI erkannt. {len(table_rows)} Netzwerke gefunden.")
-                    print("\n📋 Ergebnisübersicht:\n")
-                    for i, row in enumerate(table_rows):
-                        cols = row.find_elements(By.TAG_NAME, 'td')
-                        if len(cols) < 4: continue  # Zeile überspringen, wenn sie nicht genug Spalten hat
+                # --- Fallback-Logik für ALTE UI (Tabellen-basiert) ---
+                old_table_row_xpath = '//tbody[@id="uiScanResultBody"]/tr'
+                num_table_rows = len(self.browser.driver.find_elements(By.XPATH, old_table_row_xpath))
 
-                        signal_title = cols[0].get_attribute("title").strip()
-                        name = cols[1].text.strip()
-                        channel = cols[2].text.strip()
-                        mac = cols[3].text.strip()
-                        # Frequenzband ist in der alten Ansicht nicht verfügbar
-                        freq = "5 GHz" if int(channel) > 14 else "2,4 GHz"
-                        self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                if num_table_rows > 0:
+                    print(f"📶 Alte Tabellen-UI erkannt. {num_table_rows} Netzwerke gefunden.")
+                    print("\n📋 Ergebnisübersicht:\n")
+                    for i in range(num_table_rows):
+                        try:
+                            row = self.browser.driver.find_element(By.XPATH, f"({old_table_row_xpath})[{i + 1}]")
+                            cols = row.find_elements(By.TAG_NAME, 'td')
+                            if len(cols) < 4: continue
+
+                            signal_title = cols[0].get_attribute("title").strip()
+                            name = cols[1].text.strip()
+                            channel = cols[2].text.strip()
+                            mac = cols[3].text.strip()
+                            freq = "5 GHz" if int(channel) > 14 else "2,4 GHz"
+                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                        except Exception as e:
+                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}: {e}")
                     self.is_wifi_checked = True
                     return True
 
+                # Wenn keine der beiden Suchen erfolgreich war
                 print(f"⚠️ Keine WLAN-Netzwerke gefunden (Versuch {versuch}/{max_versuche}).")
 
             except Exception as e:
