@@ -25,9 +25,9 @@ class FirmwareManager:
     def __init__(self):
         self.firmware_mapping = {
             "7590": {
-                "bridge": "07.17",
+                "bridge": "07.13",
                 "final": "08.03",
-                "bridge_file": "FRITZ.Box_7590-07.17.image", # Beispielhafter Dateiname
+                "bridge_file": "FRITZ.Box_7590-07.13.image", # Beispielhafter Dateiname
                 "final_file": "FRITZ.Box_7590-08.03.image"
             },
             "7530": {
