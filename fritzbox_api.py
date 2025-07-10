@@ -565,8 +565,8 @@ class FritzBox:
             # Klick auf den finalen Bestätigungsbutton
             confirm_button_xpaths = [
                 '//*[@id="uiDefaults"]',
-                '//*[@id="content"]/div/button',
                 '//button[contains(text(), "Werkseinstellungen laden")]'
+                '//*[@id="content"]/div/button',
             ]
             found_confirm_button = False
             for xpath in confirm_button_xpaths:
