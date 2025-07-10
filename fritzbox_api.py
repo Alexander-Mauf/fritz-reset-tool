@@ -585,8 +585,11 @@ class FritzBox:
             print(f"❌ Fehler im Reset-Ablauf über UI-Menü: {e}")
             return False
 
-        # Warten auf die physische Bestätigung an der Box
-        time.sleep(7)
+        # bestätigen, dass der WES reset ausgeführt werden soll
+        ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
+        btn = self.browser.sicher_warten(ok_button_xpath, timeout=180, sichtbar=True)
+        btn.click()
+
         print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken (falls erforderlich)...")
         try:
             ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
@@ -595,6 +598,7 @@ class FritzBox:
             print("✅ OK-Button geklickt nach physischer Bestätigung.")
             self.is_reset = True
             time.sleep(25)  # Zeit für den Neustart geben
+            self.warte_auf_erreichbarkeit()
             if self.ist_sprachauswahl():
                 print("✅ Erfolgreich auf Werkseinstellungen zurückgesetzt.")
                 return True
