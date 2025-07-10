@@ -494,10 +494,10 @@ class FritzBox:
                 time.sleep(2)  # Warten, bis die Seite und ihre Elemente geladen sind
 
                 # Prüfe den Zustand des "FRITZ!OS-Datei"-Reiters
-                update_tab = self.browser.sicher_warten('//*[@id="userUp"]', timeout=5)
-                is_disabled = "disabled" in update_tab.get_attribute("class")
-
-                if is_disabled:
+                try:
+                    update_tab = self.browser.sicher_warten('//*[@id="userUp"]', timeout=5)
+                    print("✅ Erweiterte Ansicht ist bereits aktiv.")
+                except:
                     print("...'FRITZ!OS-Datei' ist deaktiviert. Aktiviere erweiterte Ansicht.")
                     # Menü (Burger-Icon) öffnen
                     menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5)
@@ -511,8 +511,6 @@ class FritzBox:
                     self.browser.driver.execute_script("arguments[0].click();", expert_link)
                     print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
                     time.sleep(3)
-                else:
-                    print("✅ Erweiterte Ansicht ist bereits aktiv.")
 
                 # Zurück zur Hauptseite für einen sauberen Zustand
                 self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
@@ -588,6 +586,7 @@ class FritzBox:
             return False
 
         # Warten auf die physische Bestätigung an der Box
+        time.sleep(7)
         print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken (falls erforderlich)...")
         try:
             ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
@@ -857,7 +856,7 @@ class FritzBox:
                             channel = cols[4].text.strip() # fragwürdig
                             self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
                         except Exception as e:
-                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}: {e}")
+                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
                     return True
 
@@ -943,7 +942,15 @@ class FritzBox:
                 return False
 
             print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
-            return True
+            # --- NEU: Aktiv auf die Box warten ---
+            # Wir geben ihr großzügig Zeit (40 Versuche * 10s = 400s)
+            time.sleep(45)
+            if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
+                print("✅ Box ist nach dem Update wieder erreichbar.")
+                return True
+            else:
+                print("❌ Box ist nach dem Update nicht wieder erreichbar.")
+                return False
 
         except Exception as e:
             print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")

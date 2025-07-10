@@ -51,7 +51,7 @@ class Browser:
             # Die Login-Prüfung erfolgt in der FritzBox-Klasse, die diese Browser-Methoden nutzt.
             raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden): {e}")
 
-    def klicken(self, xpath, timeout=15, versuche=3):
+    def klicken(self, xpath, timeout=15, versuche=3, verbose=False):
         """
         Klickt auf ein Element, versucht bei Fehlschlag JavaScript-Klick.
         Gibt True bei Erfolg, False bei Fehlschlag zurück.
@@ -68,8 +68,12 @@ class Browser:
                     self.driver.execute_script("arguments[0].click();", element)
                     return True # JavaScript-Klick war (wahrscheinlich) erfolgreich
             except Exception as e:
-                print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1}): {e}")
-                time.sleep(1) # Kurze Pause vor dem nächsten Versuch
+                if verbose:
+                    print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1}): {e}")
+                    time.sleep(1) # Kurze Pause vor dem nächsten Versuch
+                else:
+                    print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1})")
+                    time.sleep(1)  # Kurze Pause vor dem nächsten Versuch
         print(f"❌ Element {xpath} nicht klickbar nach {versuche} Versuchen.")
         return False
 
