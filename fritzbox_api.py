@@ -464,7 +464,10 @@ class FritzBox:
             return False
 
     def activate_expert_mode_if_needed(self) -> bool:
-        """Prüft die FRITZ!OS-Version und aktiviert die erweiterte Ansicht mit erzwungenen JS-Klicks und explizitem Warten."""
+        """
+        Stellt sicher, dass die erweiterte Ansicht aktiviert ist.
+        Prüft den aktuellen Status, um ein versehentliches Deaktivieren zu verhindern.
+        """
         print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
         if not self.os_version: return True
 
@@ -474,14 +477,13 @@ class FritzBox:
         major, minor = int(match.group(1)), int(match.group(2))
 
         if major < 7 or (major == 7 and minor < 15):
-            print(f"ℹ️ Version {major}.{minor} erkannt. Erweiterte Ansicht wird umgeschaltet.")
+            print(f"ℹ️ Version {major}.{minor} erkannt. Status der erweiterten Ansicht wird geprüft.")
             try:
-                # Schritt 1: Klick auf das Menü-Icon mit JS erzwingen
+                # Schritt 1: Menü öffnen
                 print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
                 menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
                 self.browser.driver.execute_script("arguments[0].click();", menu_icon)
 
-                # Warten, bis das Menü aufgeklappt ist
                 print("...warte darauf, dass das Menü vollständig geöffnet ist.")
                 WebDriverWait(self.browser.driver, 5).until(
                     EC.presence_of_element_located(
@@ -489,19 +491,36 @@ class FritzBox:
                 )
                 print("...Menü ist geöffnet.")
 
-                # Schritt 2: Klick auf den Link "Erweiterte Ansicht"
-                print("...suche den Link 'Erweiterte Ansicht'.")
+                # Schritt 2: Prüfen, ob der Modus bereits aktiv ist
                 expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
+                is_active = False
+                try:
+                    # Wir suchen nach einem Kind-Element mit einer Klasse wie "icon_checked",
+                    # was ein starker Indikator für einen aktiven Zustand ist.
+                    expert_link.find_element(By.XPATH, ".//span[contains(@class, 'checked')]")
+                    is_active = True
+                except Exception:
+                    # Wenn kein Indikator gefunden wird, nehmen wir an, der Modus ist aus.
+                    is_active = False
 
-                print("...erzwinge Klick auf den Link mit JavaScript.")
-                self.browser.driver.execute_script("arguments[0].click();", expert_link)
+                # Schritt 3: Nur klicken, wenn der Modus NICHT aktiv ist
+                if is_active:
+                    print("✅ Erweiterte Ansicht ist bereits aktiv. Nichts zu tun.")
+                    # Menü wieder schließen, um aufzuräumen
+                    self.browser.driver.execute_script("arguments[0].click();", menu_icon)
+                    time.sleep(1)
+                else:
+                    print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
+                    print("...erzwinge Klick auf den Link mit JavaScript.")
+                    self.browser.driver.execute_script("arguments[0].click();", expert_link)
+                    print("✅ 'Erweiterte Ansicht' erfolgreich aktiviert.")
+                    # Nach dem Klick verschwindet das Menü von selbst.
+                    time.sleep(3)
 
-                print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
-                time.sleep(3)
                 return True
 
             except Exception as e:
-                print(f"❌ Fehler beim Umschalten der erweiterten Ansicht: {e}")
+                print(f"❌ Fehler beim Prüfen/Umschalten der erweiterten Ansicht: {e}")
                 return False
         else:
             print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
@@ -895,7 +914,7 @@ class FritzBox:
             # Schritt 3b: Checkbox deaktivieren, falls sie ausgewählt ist.
             if checkbox.is_selected():
                 print("...deaktiviere die Checkbox 'Einstellungen sichern'.")
-                self.browser.klicken(checkbox)
+                checkbox.click()
                 time.sleep(1) # Kurze Pause, damit die UI reagieren kann
 
             # Schritt 3c: Jetzt, nach der Interaktion mit der Checkbox, auf das Datei-Eingabefeld warten.
