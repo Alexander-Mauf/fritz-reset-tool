@@ -201,20 +201,17 @@ class FritzBox:
 
     def login(self, password: str, force_reload=False) -> bool:
         """
-        Führt den Login in die FritzBox durch.
-        Versucht, vorhandenen Login zu erkennen und alle auftretenden Dialoge zu behandeln,
-        bis das Hauptmenü zugänglich ist.
-        Gibt True bei Erfolg, False bei Fehlschlag zurück.
+        Führt den Login durch und arbeitet alle nachfolgenden Dialoge in einer
+        robusten Schleife ab, bis das Hauptmenü erreichbar ist.
         """
         if not self.warte_auf_erreichbarkeit():
             print("❌ FritzBox nicht erreichbar für Login.")
             return False
 
         self.password = password
-
         print("🔐 Login wird versucht...")
 
-        if not force_reload and self.is_logged_in_and_menu_ready(timeout=5):
+        if not force_reload and self.is_logged_in_and_menu_ready(timeout=3):
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
@@ -223,41 +220,57 @@ class FritzBox:
         if self._handle_language_selection():
             self.browser.get_url(self.url)
 
-        if not self._check_if_login_required():
-            print("❌ Login-Feld nicht gefunden. Unerwarteter Seiten-Zustand vor Login-Versuch.")
-            self.is_logged_in = False
-            return False
+        if self._check_if_login_required():
+            try:
+                self.browser.schreiben('//*[@id="uiPass"]', password)
+                self.browser.klicken('//*[@id="submitLoginBtn"]')
+            except Exception as e:
+                print(f"❌ Fehler bei der initialen Login-Eingabe: {e}")
+                return False
+        else:
+            print("ℹ️ Kein Login-Feld gefunden. Gehe davon aus, dass ein initialer Dialog aktiv ist.")
 
-        try:
-            if not self.browser.schreiben('//*[@id="uiPass"]', password):
-                raise Exception("Passwort konnte nicht in Feld geschrieben werden.")
-            if not self.browser.klicken('//*[@id="submitLoginBtn"]'):
-                raise Exception("Login-Button konnte nicht geklickt werden.")
+        # --- FINALE DIALOG-SCHLEIFE (HYBRID-MODELL) ---
+        max_dialog_attempts = 15
+        print("...starte Abarbeitung aller möglichen Dialoge...")
+        dialog_handlers = [
+            self.neue_firmware_dialog,
+            self.dsl_setup_init,
+            self.checkbox_fehlerdaten_dialog,
+            self.skip_configuration
+        ]
 
-            time.sleep(2)
+        for attempt in range(max_dialog_attempts):
+            print(f"   (Dialog-Runde {attempt + 1}/{max_dialog_attempts})")
 
-            max_dialog_attempts = 10
-            for attempt in range(max_dialog_attempts):
-                if self.is_logged_in_and_menu_ready(timeout=5):
-                    print(f"✅ Login erfolgreich nach {attempt} Dialogrunden und Hauptmenü zugänglich.")
-                    return True
+            if self.is_logged_in_and_menu_ready(timeout=2):
+                print("✅ Login erfolgreich und Hauptmenü zugänglich.")
+                self.is_logged_in = True
+                return True
 
-                print(f"Versuche Post-Login-Dialoge zu behandeln (Runde {attempt + 1})...")
-                if not self._handle_post_login_dialogs_round():
-                    print("❌ Kritischer Fehler während Post-Login-Dialogbehandlung.")
-                    self.is_logged_in = False
-                    return False
+            if self._check_if_login_required():
+                print("❌ Zurück auf der Login-Seite. Der Login ist fehlgeschlagen.")
+                self.is_logged_in = False
+                return False
 
-                time.sleep(1)
+            # Versuche, einen der spezifischen Dialoge zu behandeln
+            action_taken = False
+            for handler in dialog_handlers:
+                if handler(): # Ruft die Funktion auf (z.B. self.neue_firmware_dialog())
+                    action_taken = True
+                    break # Nach einer erfolgreichen Aktion starten wir die Runde neu
 
-            print("❌ Maximale Dialogrunden erreicht, Hauptmenü nicht zugänglich.")
-            self.is_logged_in = False
-            return False
+            # Wenn kein spezifischer Dialog zugetroffen hat, versuche den Fallback "Übernehmen"
+            if not action_taken:
+                print("   ...kein spezifischer Dialog gefunden, versuche Fallback 'Übernehmen'.")
+                # Wir nutzen hier einen Klick-Versuch, der nicht fehlschlägt, wenn der Button nicht da ist
+                self.browser.klicken('//*[@id="uiApply"]', timeout=1, versuche=1)
 
-        except Exception as e:
-            print(f"❌ Login fehlgeschlagen: {e}")
-            self.is_logged_in = False
-            return False
+            time.sleep(1.5) # Pause zwischen den Runden
+
+        print("❌ Login-Vorgang abgebrochen: Nach mehreren Versuchen konnte das Hauptmenü nicht erreicht werden.")
+        self.is_logged_in = False
+        return False
 
     def _handle_post_login_dialogs_round(self) -> bool:
         """
@@ -298,131 +311,55 @@ class FritzBox:
         return True
 
     def neue_firmware_dialog(self) -> bool:
-        """Behandelt den Dialog, der nach einer Firmware-Installation erscheinen kann."""
-        print("Prüfe ob 'Neue Firmware installiert'-Dialog erscheint...")
-        ok_buttons_xpaths = [
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-        ]
-        weiter_buttons_xpaths = [
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-        ]
-
-        for xpath in ok_buttons_xpaths:
-            if self.browser.klicken(xpath, timeout=2):
-                print("✅ 'OK' Button im Firmware-Dialog geklickt.")
-                time.sleep(1)
+        """Behandelt den Dialog 'Neue Firmware wurde installiert'."""
+        try:
+            # Suchen nach einem eindeutigen Text oder Button dieses Dialogs
+            if self.browser.sicher_warten('//h1[contains(text(), "FRITZ!OS wurde aktualisiert")]', timeout=1, sichtbar=False):
+                print("...behandle 'Firmware aktualisiert'-Dialog.")
+                # Klickt auf OK oder Weiter
+                self.browser.klicken('//button[contains(text(), "OK")] | //a[contains(text(), "Weiter")]', timeout=3, versuche=1)
                 return True
-        for xpath in weiter_buttons_xpaths:
-            if self.browser.klicken(xpath, timeout=2):
-                print("✅ 'Weiter' Button im Firmware-Dialog geklickt.")
-                time.sleep(1)
-                return True
-
-        print("ℹ️ Kein 'Neue Firmware installiert'-Dialog gefunden oder konnte nicht geklickt werden.")
-        return False # Gebe False zurück, um anzuzeigen, dass kein Dialog erfolgreich behandelt wurde
+        except Exception:
+            pass # Element nicht gefunden, also war dieser Dialog nicht da.
+        return False
 
     def dsl_setup_init(self) -> bool:
-        """Behandelt initialen DSL-Setup-Dialog (z.B. nach einem Reset)."""
-        print("⚙️ Prüfe auf und setze default DSL-Settings (falls vorhanden)...")
-        forward_buttons_xpaths = [
-            '//*[@id="uiForward"]',
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-        ]
-
-        found_and_clicked = False
-        for _ in range(3):
-            for xpath in forward_buttons_xpaths:
-                if self.browser.klicken(xpath, timeout=2):
-                    print(f"✅ '{xpath}' im DSL-Setup initial gefunden und geklickt.")
-                    found_and_clicked = True
-                    time.sleep(1)
-                    break
-            if not found_and_clicked:
-                break
-
-        if found_and_clicked:
-            return True
-        else:
-            print("ℹ️ Kein initialer DSL-Setup-Dialog ('uiForward' oder 'Weiter') gefunden.")
-            return False
+        """Behandelt den initialen DSL-Einrichtungs-Assistenten."""
+        try:
+             # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
+            if self.browser.sicher_warten('//*[@id="uiForward"]', timeout=1, sichtbar=False):
+                print("...behandle initialen DSL-Setup-Dialog.")
+                self.browser.klicken('//*[@id="uiForward"]', timeout=3, versuche=1)
+                return True
+        except Exception:
+            pass
+        return False
 
     def checkbox_fehlerdaten_dialog(self) -> bool:
-        """Behandelt den Fehlerdaten-Senden-Dialog."""
-        print("🛑 Fehlerdaten-Checkbox prüfen...")
+        """Behandelt den Dialog zum Senden von Fehlerdiagnosedaten."""
         try:
-            checkbox = self.browser.sicher_warten('//*[@id="uiTr069diag"]', timeout=2)
+            checkbox = self.browser.sicher_warten('//*[@id="uiTr069diag"]', timeout=1)
+            print("...behandle Fehlerdaten-Dialog.")
             if checkbox.is_selected():
                 checkbox.click()
-                print("☑️ Deaktiviert.")
-            else:
-                print("☑️ Bereits deaktiviert.")
-
-            apply_buttons_xpaths = [
-                '//*[@id="uiApply"]',
-                '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übernehmen")]',
-                '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übernehmen")]',
-                '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übernehmen")]',
-                '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übernehmen")]',
-                '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "übernehmen")]',
-            ]
-            for xpath in apply_buttons_xpaths:
-                if self.browser.klicken(xpath, timeout=2):
-                    print("➡️ Änderungen übernommen (Fehlerdaten).")
-                    time.sleep(1)
-                    return True
-
-            return True # Checkbox war da, aber evtl. kein Button nötig oder schon deaktiviert
+            # Klickt danach auf "Übernehmen"
+            self.browser.klicken('//*[@id="uiApply"]')
+            return True
         except Exception:
-            print("ℹ️ Keine Fehlerdaten-Checkbox oder Übernehmen-Button gefunden/benötigt.")
-            return False
+            pass
+        return False
 
     def skip_configuration(self) -> bool:
-        """Versucht, generische Konfigurationsdialoge zu überspringen (z.B. "Weiter"-Buttons)."""
-        print("📌 Konfigurationsdialoge überspringen (generisch)...")
-        generic_buttons_xpaths = [
-            '//*[@id="Button1"]',
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//input[contains(translate(@value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-            '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "ok")]',
-        ]
-
-        clicked_any_in_this_round = False
-        for xpath in generic_buttons_xpaths:
-            try:
-                button_elem = self.browser.sicher_warten(xpath, timeout=1, sichtbar=True)
-                if button_elem.is_displayed() and button_elem.is_enabled():
-                    if self.browser.klicken(xpath, timeout=1):
-                        print(f"✅ Generischen Button geklickt: {xpath}")
-                        clicked_any_in_this_round = True
-                        time.sleep(1)
-                        break
-            except Exception:
-                pass
-
-        if clicked_any_in_this_round:
-            return True
-        else:
-            print("ℹ️ Keine generischen Konfigurationsdialoge gefunden in dieser Runde.")
-            return False
+        """Behandelt generische Konfigurations-Dialoge mit einem "Schließen" oder "OK" Button."""
+        try:
+             # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
+            if self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False):
+                print("...überspringe generischen Konfigurations-Dialog.")
+                self.browser.klicken('//*[@id="Button1"]', timeout=3, versuche=1)
+                return True
+        except Exception:
+            pass
+        return False
 
     def reset_via_forgot_password(self) -> bool:
         """Leitet den Werksreset über den 'Passwort vergessen'-Link ein (ohne Login)."""
@@ -465,10 +402,10 @@ class FritzBox:
 
     def activate_expert_mode_if_needed(self) -> bool:
         """
-        Stellt sicher, dass die erweiterte Ansicht aktiviert ist.
-        Prüft den aktuellen Status, um ein versehentliches Deaktivieren zu verhindern.
+        Prüft, ob der "FRITZ!OS-Datei"-Reiter klickbar ist. Wenn nicht, wird die
+        erweiterte Ansicht aktiviert. Dies ist die zuverlässigste Methode.
         """
-        print("🔍 Prüfe, ob erweiterte Ansicht aktiviert werden muss...")
+        print("🔍 Prüfe, ob erweiterte Ansicht aktiv ist (via Update-Reiter-Status)...")
         if not self.os_version: return True
 
         match = re.search(r'(\d{2,3})\.(\d{2})', self.os_version)
@@ -477,46 +414,44 @@ class FritzBox:
         major, minor = int(match.group(1)), int(match.group(2))
 
         if major < 7 or (major == 7 and minor < 15):
-            print(f"ℹ️ Version {major}.{minor} erkannt. Status der erweiterten Ansicht wird geprüft.")
             try:
-                # Schritt 1: Menü öffnen
-                print("...erzwinge Klick auf Menü-Icon mit JavaScript.")
-                menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
-                self.browser.driver.execute_script("arguments[0].click();", menu_icon)
+                # Schritt 1: Gehe zur Update-Seite
+                print("...navigiere zur Update-Seite, um den Status zu prüfen.")
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                time.sleep(1)
+                if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
+                time.sleep(2)  # Warten, bis die Seite und ihre Elemente geladen sind
 
-                print("...warte darauf, dass das Menü vollständig geöffnet ist.")
-                WebDriverWait(self.browser.driver, 5).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
-                )
-                print("...Menü ist geöffnet.")
+                # Schritt 2: Prüfe den Zustand des "FRITZ!OS-Datei"-Reiters
+                update_tab = self.browser.sicher_warten('//*[@id="userUp"]', timeout=5)
 
-                # Schritt 2: Prüfen, ob der Modus bereits aktiv ist
-                expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
-                is_active = False
-                try:
-                    # Wir suchen nach einem Kind-Element mit einer Klasse wie "icon_checked",
-                    # was ein starker Indikator für einen aktiven Zustand ist.
-                    expert_link.find_element(By.XPATH, ".//span[contains(@class, 'checked')]")
-                    is_active = True
-                except Exception:
-                    # Wenn kein Indikator gefunden wird, nehmen wir an, der Modus ist aus.
-                    is_active = False
+                # Ein deaktivierter Reiter hat oft eine CSS-Klasse wie 'disabled'.
+                # .is_enabled() funktioniert bei <a>-Tags oft nicht zuverlässig.
+                is_disabled = "disabled" in update_tab.get_attribute("class")
 
-                # Schritt 3: Nur klicken, wenn der Modus NICHT aktiv ist
-                if is_active:
-                    print("✅ Erweiterte Ansicht ist bereits aktiv. Nichts zu tun.")
-                    # Menü wieder schließen, um aufzuräumen
+                if is_disabled:
+                    # Schritt 3: Nur wenn der Reiter deaktiviert ist, den Modus umschalten.
+                    print("...Reiter 'FRITZ!OS-Datei' ist deaktiviert. Aktiviere erweiterte Ansicht.")
+
+                    # Menü öffnen
+                    menu_icon = self.browser.sicher_warten('//*[@id="blueBarUserMenuIcon"]', timeout=5, sichtbar=False)
                     self.browser.driver.execute_script("arguments[0].click();", menu_icon)
-                    time.sleep(1)
-                else:
-                    print("🎚️ Erweiterte Ansicht ist nicht aktiv. Aktiviere sie jetzt...")
-                    print("...erzwinge Klick auf den Link mit JavaScript.")
-                    self.browser.driver.execute_script("arguments[0].click();", expert_link)
-                    print("✅ 'Erweiterte Ansicht' erfolgreich aktiviert.")
-                    # Nach dem Klick verschwindet das Menü von selbst.
-                    time.sleep(3)
+                    WebDriverWait(self.browser.driver, 5).until(
+                        EC.presence_of_element_located(
+                            (By.XPATH, '//*[@id="blueBarUserMenuIcon" and @aria-expanded="true"]'))
+                    )
 
+                    # Link klicken
+                    expert_link = self.browser.sicher_warten('//a[@id="expert"]', timeout=5)
+                    self.browser.driver.execute_script("arguments[0].click();", expert_link)
+
+                    print("✅ 'Erweiterte Ansicht' erfolgreich umgeschaltet.")
+                    time.sleep(3)  # Warten, bis die Seite die Änderung verarbeitet
+                else:
+                    print("✅ Erweiterte Ansicht ist bereits aktiv (Update-Reiter ist klickbar).")
+
+                # Zum Schluss zur Hauptseite zurückkehren, um einen sauberen Zustand zu hinterlassen.
+                self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
                 return True
 
             except Exception as e:
@@ -608,19 +543,22 @@ class FritzBox:
             print(f"❌ Fehler beim Warten auf den finalen OK-Klick: {e}")
             return False
 
-
-    def get_firmware_version(self) -> str | None:
+    def get_firmware_version(self) -> str | bool:
         """Ermittelt die aktuelle Firmware-Version der FritzBox."""
         print("ℹ️ Ermittle Firmware-Version...")
         try:
             if not self.is_logged_in_and_menu_ready():
                 print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Versionsprüfung erforderlich.")
-                return None
+                return False
 
-            if not self.browser.klicken('//*[@id="sys"]', timeout=5): return None
-            if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return None
+            # Zur Sicherheit zur Hauptseite, dann ins Menü
+            self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
+            time.sleep(1)
+            if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+            if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
-            version_elem = self.browser.sicher_warten('//*[@class="fakeTextInput" or contains(@class, "version_text")]', timeout=5)
+            version_elem = self.browser.sicher_warten('//*[@class="fakeTextInput" or contains(@class, "version_text")]',
+                                                      timeout=5)
             version_text = version_elem.text.strip()
 
             if version_text:
@@ -629,31 +567,10 @@ class FritzBox:
                 return self.os_version
             else:
                 print("❌ Keine Firmware-Version gefunden auf der Update-Seite.")
-                return None
+                return False  # KORREKTUR: Bei Fehler False zurückgeben
         except Exception as e:
             print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
-            return None
-
-    def _extract_model_number(self, element) -> str | None:
-        """
-        Extrahiert die 4-stellige Modellnummer aus dem textContent eines Elements.
-        Diese Methode ist zuverlässiger als .text für unsichtbare Elemente.
-        """
-        try:
-            # .get_attribute("textContent") liest Text auch aus versteckten Elementen
-            text_content = element.get_attribute("textContent").strip()
-
-            # Dieser Regex sucht einfach nach der ersten 4-stelligen Zahl, was sehr robust ist.
-            match = re.search(r'(\d{4,})', text_content)
-            if match:
-                model_number = match.group(1)
-                # Fall für LTE-Modelle
-                if "LTE" in text_content:
-                    return f"{model_number}_LTE"
-                return model_number
-        except Exception:
-            return None
-        return None
+            return False  # KORREKTUR: Bei Fehler False zurückgeben
 
     def get_box_model(self) -> str | None:
         """Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie."""
@@ -877,10 +794,7 @@ class FritzBox:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
 
     def perform_firmware_update(self, firmware_path: str) -> bool:
-        """
-        Führt ein Firmware-Update durch und beachtet dabei die korrekte, sequenzielle
-        Freischaltung und Interaktion mit den UI-Elementen.
-        """
+        """Führt ein Firmware-Update durch und stellt vorher einen sauberen UI-Zustand her."""
         if not self.is_logged_in_and_menu_ready():
             print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
             return False
@@ -891,14 +805,21 @@ class FritzBox:
         print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
         try:
-            # Navigation zum Update-Menü
+            # NEU: Zur Sicherheit zur Hauptseite navigieren, um einen definierten Startpunkt zu haben.
+            print("...navigiere zur Hauptseite für einen sauberen Start.")
+            self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
+            time.sleep(1)
+
+            # Schritt 1: Navigation zum Update-Menü
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             time.sleep(1)
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
             time.sleep(1)
-            if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]', timeout=5): return False
+            if not self.browser.klicken('//*[@id="userUp"] | //a[contains(text(), "FRITZ!OS-Datei")]',
+                                        timeout=5): return False
             time.sleep(1)
 
+            # ... (der Rest der Methode bleibt gleich) ...
             print("...warte auf die Seite für das Date-Update.")
             try:
                 checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
@@ -918,7 +839,6 @@ class FritzBox:
                 print(f"❌ Das Datei-Eingabefeld ist nicht erschienen: {e}")
                 return False
 
-            # KORREKTUR: .send_keys() wird direkt auf dem gefundenen Element aufgerufen.
             file_input.send_keys(firmware_path)
             print("✅ Firmware-Pfad erfolgreich eingetragen.")
 
