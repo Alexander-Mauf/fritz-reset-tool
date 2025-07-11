@@ -132,6 +132,7 @@ class FritzBox:
         self.password = None
         self.box_model = None
         self.is_wifi_checked = False
+        self.wlan_scan_results = []
 
     def warte_auf_erreichbarkeit(self, versuche=20, delay=5) -> bool:
         """Wartet, bis die FritzBox unter einer bekannten IP erreichbar ist."""
@@ -858,8 +859,7 @@ class FritzBox:
         """
         print("📡 WLAN-Antennen prüfen...")
         self._close_any_overlay()
-        if not self.is_logged_in_and_menu_ready():
-            return False
+        self.wlan_scan_results = []  # Liste vor jedem neuen Scan leeren
 
         for versuch in range(1, max_versuche + 1):
             try:
@@ -886,7 +886,14 @@ class FritzBox:
                             mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
                             signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute(
                                 "title").strip()
-                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.wlan_scan_results.append({
+                                "name": name,
+                                "frequency": freq,
+                                "channel": channel,
+                                "mac": mac,
+                                "signal": signal_title
+                            })
                         except Exception as e:
                             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
@@ -910,7 +917,14 @@ class FritzBox:
                             freq = cols[2].text.strip() # this is apparently freq in the old Version
                             mac = cols[3].text.strip()
                             channel = cols[4].text.strip() # fragwürdig
-                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.wlan_scan_results.append({
+                                "name": name,
+                                "frequency": freq,
+                                "channel": channel,
+                                "mac": mac,
+                                "signal": signal_title
+                            })
                         except Exception as e:
                             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
@@ -927,7 +941,7 @@ class FritzBox:
         print("❌ Auch nach mehreren Versuchen keine Netzwerke gefunden.")
         return False
 
-    def _print_wlan_entry(self, index, name, freq, channel, mac, signal_title):
+    def print_wlan_entry(self, index, name, freq, channel, mac, signal_title):
         """Hilfsfunktion zur formatierten Ausgabe eines WLAN-Eintrags."""
         try:
             signal_val = signal_title.replace('%', '').replace('<', '')

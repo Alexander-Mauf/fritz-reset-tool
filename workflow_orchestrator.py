@@ -151,6 +151,22 @@ class WorkflowOrchestrator:
                                              self.fritzbox.perform_factory_reset_from_ui):
                 return None
 
+            # --- NEU: Finale Zusammenfassung des WLAN-Scans anzeigen ---
+            if self.fritzbox.wlan_scan_results:
+                print("\n\n📡📋 Zusammenfassung des WLAN-Scans 📡📋")
+                for i, network_data in enumerate(self.fritzbox.wlan_scan_results):
+                    # Rufe die existierende Funktion aus dem FritzBox-Objekt auf
+                    # und entpacke die Werte aus dem Dictionary.
+                    self.fritzbox.print_wlan_entry(
+                        index=i,
+                        name=network_data.get("name"),
+                        freq=network_data.get("frequency"),
+                        channel=network_data.get("channel"),
+                        mac=network_data.get("mac"),
+                        signal_title=network_data.get("signal")
+                    )
+                print("--------------------------------------------------")
+
             print("\n🎉 Workflow für diese FritzBox erfolgreich abgeschlossen!")
             while True:
                 auswahl = input("\n(B)eenden oder (N)eue FritzBox bearbeiten? ").strip().lower()
