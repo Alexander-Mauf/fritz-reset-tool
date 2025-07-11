@@ -183,7 +183,7 @@ def wlan_antenne_check(driver, max_versuche=2):
             else:
                 print(f"⚠️ Kein WLAN gefunden (Versuch {versuch}/{max_versuche}).")
         except Exception as e:
-            print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch}): {e}")
+            print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch})")
             rows = []
 
         if versuch < max_versuche:
@@ -294,7 +294,7 @@ def get_steps_from_branding(driver, password, firmware_pfad):
         return erstelle_standard_steps(password, firmware_pfad)
 
     except Exception as e:
-        print(f"⚠️ Branding-Erkennung fehlgeschlagen: {e}")
+        print(f"⚠️ Branding-Erkennung fehlgeschlagen")
         return erstelle_standard_steps(password, firmware_pfad)
 
 def dsl_setup_init(driver):
@@ -378,9 +378,9 @@ def tim_factory_reset(driver):
                 klicken(driver, xpath)
                 time.sleep(3)
             except Exception as e:
-                print(f"⚠️ Fehler bei Reset-Klick: {xpath} – {e}")
+                print(f"⚠️ Fehler bei Reset-Klick: {xpath}")
     except Exception as e:
-        print(f"❌ Fehler im Reset-Ablauf: {e}")
+        print(f"❌ Fehler im Reset-Ablauf:")
         return
 
     print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken...")
