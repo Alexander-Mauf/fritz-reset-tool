@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
+from functool import wraps
 import re
 import sys
 from selenium.webdriver.common.by import By
@@ -85,6 +86,36 @@ class FirmwareManager:
         else:
             print(f"❌ Firmware-Datei nicht gefunden. Bitte manuell auswählen.")
             return self._select_firmware_path_manually()
+
+
+def require_login(func):
+    """
+    Decorator, der sicherstellt, dass vor der Ausführung der Funktion ein Login besteht.
+    Versucht bei Bedarf automatisch einen erneuten Login.
+    """
+
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        # 'self' ist hier die Instanz der FritzBox-Klasse
+        print(f"🕵️  Login-Prüfung für die Funktion '{func.__name__}'...")
+
+        if not self.is_logged_in_and_menu_ready(timeout=2):
+            print("⚠️ Session abgelaufen oder nicht eingeloggt. Versuche automatischen Re-Login...")
+
+            # Die login() Methode verwendet das gespeicherte Passwort (self.password)
+            if self.login(self.password):
+                print("✅ Re-Login war erfolgreich.")
+            else:
+                print(f"❌ Der automatische Re-Login ist fehlgeschlagen. Breche '{func.__name__}' ab.")
+                return False  # Signalisiert den Fehlschlag an den WorkflowOrchestrator
+
+        # Wenn der Login besteht (oder der Re-Login erfolgreich war), führe die eigentliche Funktion aus
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
+
 
 class FritzBox:
     """Repräsentiert eine FritzBox und kapselt ihre Interaktionen."""
@@ -472,6 +503,7 @@ class FritzBox:
             print("❌ Fehler beim Bestätigen des Resets via 'sendFacReset'.")
             return False
 
+    @require_login
     def activate_expert_mode_if_needed(self) -> bool:
         """
         Prüft, ob der "FRITZ!OS-Datei"-Reiter klickbar ist. Wenn nicht, wird die
@@ -529,20 +561,12 @@ class FritzBox:
             print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
             return True
 
+    @require_login
     def perform_factory_reset_from_ui(self) -> bool:
         """
         Setzt die FritzBox auf Werkseinstellungen zurück. Verwendet sprachunabhängige
         IDs und eine mehrsprachige Textsuche für maximale Kompatibilität.
         """
-        # --- Automatischer Login-Versuch bei Bedarf ---
-        if not self.is_logged_in_and_menu_ready():
-            print("ℹ️ Nicht eingeloggt. Führe vor dem Reset einen neuen Login durch...")
-            # Die login() Methode nutzt das gespeicherte Passwort
-            if not self.login(self.password):
-                print("❌ Erneuter Login für den Reset-Versuch ist fehlgeschlagen.")
-                return False
-            print("✅ Erneuter Login erfolgreich. Setze Reset-Vorgang fort.")
-
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
@@ -634,6 +658,7 @@ class FritzBox:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
+    @require_login
     def get_firmware_version(self) -> str | bool:
         """Ermittelt die aktuelle Firmware-Version der FritzBox."""
         print("ℹ️ Ermittle Firmware-Version...")
@@ -663,8 +688,7 @@ class FritzBox:
             print(f"❌ Fehler beim Ermitteln der Firmware-Version: ")
             return False  # KORREKTUR: Bei Fehler False zurückgeben
 
-        # fritzbox_api.py
-
+    @require_login
     def get_box_model(self) -> str | bool:
         """
         Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie.
@@ -728,6 +752,8 @@ class FritzBox:
             if match:
                 model_number = match.group(1)
                 # Fall für LTE-Modelle
+                if int(model_number) == 6890:
+                    return f"{model_number}_LTE"
                 if "LTE" in text_content:
                     return f"{model_number}_LTE"
                 return model_number
@@ -824,6 +850,7 @@ class FritzBox:
             print(f"❌ Fehler beim Setzen der Sprache auf '{lang_code.upper()}'")
             return False
 
+    @require_login
     def check_wlan_antennas(self, max_versuche=2) -> bool:
         """
         Prüft WLAN-Antennen; erkennt automatisch die UI-Version (modern vs. alt)
@@ -917,11 +944,9 @@ class FritzBox:
         except Exception as e:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}:")
 
+    @require_login
     def perform_firmware_update(self, firmware_path: str) -> bool:
         """Führt ein Firmware-Update durch und stellt vorher einen sauberen UI-Zustand her."""
-        if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
-            return False
         if not firmware_path or not os.path.exists(firmware_path):
             print(f"❌ Firmware-Datei nicht gefunden unter: {firmware_path}")
             return False
@@ -929,7 +954,6 @@ class FritzBox:
         print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
         try:
-            # NEU: Zur Sicherheit zur Hauptseite navigieren, um einen definierten Startpunkt zu haben.
             print("...navigiere zur Hauptseite für einen sauberen Start.")
             self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
             time.sleep(1)
@@ -943,7 +967,6 @@ class FritzBox:
                                         timeout=5): return False
             time.sleep(1)
 
-            # ... (der Rest der Methode bleibt gleich) ...
             print("...warte auf die Seite für das Date-Update.")
             try:
                 checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
