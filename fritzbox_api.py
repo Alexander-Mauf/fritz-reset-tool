@@ -610,19 +610,9 @@ class FritzBox:
             print("⚠️ℹ️⚠️ Schritt 3: Bitte jetzt physischen Knopf an der Box drücken...")
 
             # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
-           # second_ok_xpath = '//*[contains(text(),"OK")]'
-           # btn = self.browser.sicher_warten(second_ok_xpath, timeout=180, sichtbar=True)
-           # btn.click()
-           # print("✅ Schritt 4: Zweiter OK-Button nach physischer Bestätigung geklickt.")
-           # self.is_reset = True
 
-            ok_xpath = '//*[contains(text(),"OK")]'
-            # Ein XPath, der flexibel auf "Wiederholen" oder "Retry" reagiert:
-            retry_xpath = '//*[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
-
-            print("▶️ Starte permanenten Wartezyklus auf den finalen 'OK'-Button...")
-
-            # Eine unendliche Schleife, die nur bei Erfolg durch 'break' verlassen wird.
+            ok_xpath = '//button[contains(text(),"OK")]'
+            retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
             while True:
                 try:
                     btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
