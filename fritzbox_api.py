@@ -664,9 +664,24 @@ class FritzBox:
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
-            version_elem = self.browser.sicher_warten('//*[@class="fakeTextInput" or contains(@class, "version_text")]',
-                                                      timeout=5)
-            version_text = version_elem.text.strip()
+            primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
+            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'  # Ihr Selector, leicht präzisiert
+
+            version_text = ""
+            try:
+                # 1. Versuche den primären Selector
+                version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
+                version_text = version_elem.text.strip()
+            except Exception:
+                # 2. Wenn er fehlschlägt, versuche den Fallback-Selector
+                print("...primärer Versions-Selector nicht gefunden, versuche Fallback (z.B. für 6490).")
+                version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
+                full_text = version_elem.text.strip()
+
+                # 3. Extrahiere die Versionsnummer (z.B. "07.29") aus dem Text "FRITZ!OS: 07.29"
+                match = re.search(r'(\d{2}\.\d{2})', full_text)
+                if match:
+                    version_text = match.group(1)
 
             if version_text:
                 self.os_version = version_text
