@@ -601,6 +601,7 @@ class FritzBox:
             while True:
                 try:
                     btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
+                    time.sleep(2)
                     btn.click()
                     print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
                     break  # Dies ist der einzige Ausweg aus der unendlichen Schleife.
