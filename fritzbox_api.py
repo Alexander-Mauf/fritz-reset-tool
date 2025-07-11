@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
-from functool import wraps
+from functools import wraps
 import re
 import sys
 from selenium.webdriver.common.by import By
