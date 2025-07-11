@@ -239,9 +239,12 @@ class FritzBox:
         if not self.warte_auf_erreichbarkeit():
             print("❌ FritzBox nicht erreichbar für Login.")
             return False
-
-        self.password = password
+        if password is not None and password != "":
+            self.password = password
+        print("Reload der startseite")
+        self.browser.get_url(self.url)
         print("🔐 Login wird versucht...")
+
 
         if not force_reload and self.is_logged_in_and_menu_ready(timeout=3):
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
@@ -260,7 +263,7 @@ class FritzBox:
 
         if self._check_if_login_required():
             try:
-                self.browser.schreiben('//*[@id="uiPass"]', password)
+                self.browser.schreiben('//*[@id="uiPass"]', self.password)
                 self.browser.klicken('//*[@id="submitLoginBtn"]')
             except Exception as e:
                 print(f"❌ Fehler bei der initialen Login-Eingabe:")
@@ -299,11 +302,8 @@ class FritzBox:
                     action_taken = True
                     break
 
-            # KORREKTUR: Wenn kein spezifischer Handler zugetroffen hat,
-            # wird jetzt die robuste Fallback-Methode aufgerufen.
             if not action_taken:
                 print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
-                # Ruft jetzt die korrekte und robuste Methode auf.
                 self._handle_any_dialog_button()
 
             time.sleep(1.5) # Pause zwischen den Runden
