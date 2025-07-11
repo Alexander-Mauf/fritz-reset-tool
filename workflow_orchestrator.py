@@ -53,8 +53,6 @@ class WorkflowOrchestrator:
                         # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
                         break
 
-                # Wenn die Funktion True zurückgab (oder None, was wir als Erfolg interpretieren,
-                # da die Funktion keine explizite False-Rückgabe hatte), ist der Schritt erfolgreich.
                 print("✅ Schritt erfolgreich.")
                 return True
 
@@ -68,28 +66,28 @@ class WorkflowOrchestrator:
                     # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
                     break
 
-            # Wenn der fehlgeschlagene Schritt der Login war:
-            if description == "Login durchführen":
-                print("\nLogin ist fehlgeschlagen. Starte Korrektur...")
-                letztes_passwort = self.fritzbox.password  # Das zuletzt versuchte Passwort holen
+        # Wenn der fehlgeschlagene Schritt der Login war:
+        if description == "Login durchführen":
+            print("\nLogin ist fehlgeschlagen. Starte Korrektur...")
+            letztes_passwort = self.fritzbox.password  # Das zuletzt versuchte Passwort holen
 
-                while True:
-                    neues_passwort = input(
-                        "🔑 Passwort möglicherweise falsch. Bitte erneut eingeben.").strip()
+            while True:
+                neues_passwort = input(
+                    "🔑 Passwort möglicherweise falsch. Bitte erneut eingeben.").strip()
 
-                    if neues_passwort == letztes_passwort:
-                        print("⚠️ Das eingegebene Passwort ist identisch zum letzten Versuch.")
-                        print("🚨 Starte Werksreset über 'Passwort vergessen'...")
-                        return self.fritzbox.reset_via_forgot_password()
+                if neues_passwort == letztes_passwort:
+                    print("⚠️ Das eingegebene Passwort ist identisch zum letzten Versuch.")
+                    print("🚨 Starte Werksreset über 'Passwort vergessen'...")
+                    return self.fritzbox.reset_via_forgot_password()
+                else:
+                    # Der Benutzer hat ein neues Passwort eingegeben, wir versuchen es damit erneut.
+                    print("🔁 Versuche Login mit dem neuen Passwort...")
+                    # Wir rufen die Login-Funktion direkt mit dem neuen Passwort auf
+                    if self.fritzbox.login(neues_passwort):
+                        print("✅ Login mit neuem Passwort war erfolgreich!")
+                        return True
                     else:
-                        # Der Benutzer hat ein neues Passwort eingegeben, wir versuchen es damit erneut.
-                        print("🔁 Versuche Login mit dem neuen Passwort...")
-                        # Wir rufen die Login-Funktion direkt mit dem neuen Passwort auf
-                        if self.fritzbox.login(neues_passwort):
-                            print("✅ Login mit neuem Passwort war erfolgreich!")
-                            return True
-                        else:
-                            letztes_passwort = neues_passwort
+                        letztes_passwort = neues_passwort
 
 
         # Wenn die Schleife beendet ist (nach max_attempts oder explizitem False),
