@@ -26,7 +26,7 @@ class WorkflowOrchestrator:
             win32gui.SetForegroundWindow(console_hwnd)
             print("🪟 CMD-Fenster wurde in den Vordergrund gebracht.")
         except Exception as e:
-            print(f"⚠️ Fenster-Fokus fehlgeschlagen: {e}")
+            print(f"⚠️ Fenster-Fokus fehlgeschlagen")
 
     def _run_step_with_retry(self, description: str, func, *args, **kwargs) -> bool:
         """
@@ -59,7 +59,7 @@ class WorkflowOrchestrator:
                 return True
 
             except Exception as e:
-                print(f"⚠️ Fehler bei '{description}' (Versuch {attempt + 1}/{max_attempts}): {e}")
+                print(f"⚠️ Fehler bei '{description}' (Versuch {attempt + 1}/{max_attempts})")
                 if attempt < max_attempts - 1:
                     print("🔁 Versuche es erneut...")
                     time.sleep(2)
@@ -160,7 +160,7 @@ class WorkflowOrchestrator:
                     return "restart"
 
         except Exception as e:
-            print(f"\n❌ Schwerwiegender Fehler im Workflow: {e}")
+            print(f"\n❌ Schwerwiegender Fehler im Workflow")
             return None
         finally:
             if self.browser:

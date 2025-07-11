@@ -222,7 +222,7 @@ class FritzBox:
             self.browser.get_url(self.url)
             try:
                 self.browser.sicher_warten('//*[@id="uiPass"]')
-                continue
+                break
             except Exception:
                 print("Password Feld nicht gefunden. Rufe Seite erneut auf.")
 
@@ -582,26 +582,37 @@ class FritzBox:
                 print("❌ Konnte den ersten Bestätigungs-Dialog (#Button1) nicht finden.")
                 return False
             print("✅ Schritt 2: Erster OK-Dialog bestätigt.")
-
-            # --- Schritt 3 & 4: Auf physischen Knopfdruck warten und bestätigen ---
-            print("...warte auf die Aufforderung zum Drücken des physischen Knopfs.")
-
-            # Mehrsprachige Suche nach der Aufforderung
-            prompt_xpath = '''
-            //p[contains(text(), "Drücken Sie jetzt eine beliebige Taste") or 
-               contains(text(), "Press any key on your FRITZ!Box") or 
-               contains(text(), "Premere ora un tasto qualsiasi")]
-            '''
-            self.browser.sicher_warten(prompt_xpath, timeout=15)
-
-            print("⚠️ℹ️⚠️ Schritt 3: Aufforderung erkannt. Bitte jetzt physischen Knopf an der Box drücken...")
+            print("⚠️ℹ️⚠️ Schritt 3: Bitte jetzt physischen Knopf an der Box drücken...")
 
             # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
-            second_ok_xpath = '//*[contains(text(),"OK")]'
-            btn = self.browser.sicher_warten(second_ok_xpath, timeout=180, sichtbar=True)
-            btn.click()
-            print("✅ Schritt 4: Zweiter OK-Button nach physischer Bestätigung geklickt.")
-            self.is_reset = True
+           # second_ok_xpath = '//*[contains(text(),"OK")]'
+           # btn = self.browser.sicher_warten(second_ok_xpath, timeout=180, sichtbar=True)
+           # btn.click()
+           # print("✅ Schritt 4: Zweiter OK-Button nach physischer Bestätigung geklickt.")
+           # self.is_reset = True
+
+            ok_xpath = '//*[contains(text(),"OK")]'
+            # Ein XPath, der flexibel auf "Wiederholen" oder "Retry" reagiert:
+            retry_xpath = '//*[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
+
+            print("▶️ Starte permanenten Wartezyklus auf den finalen 'OK'-Button...")
+
+            # Eine unendliche Schleife, die nur bei Erfolg durch 'break' verlassen wird.
+            while True:
+                try:
+                    btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
+                    btn.click()
+                    print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
+                    break  # Dies ist der einzige Ausweg aus der unendlichen Schleife.
+                except Exception:  # Wird ausgelöst, wenn 'sicher_warten' nach 180s fehlschlägt.
+                    print("⏳ 'OK'-Button nicht im Zeitfenster gefunden. Suche nach Fallback...")
+                    try:
+                        retry_btn = self.browser.sicher_warten(retry_xpath, timeout=5, sichtbar=True)
+                        retry_btn.click()
+                        print("🔁 'Wiederholen/Retry' geklickt. Starte neuen Suchlauf für 'OK'.")
+                    except Exception:
+                        print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
+                        time.sleep(10)
 
         except Exception:
             print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
