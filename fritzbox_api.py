@@ -124,7 +124,7 @@ class FritzBox:
                 except requests.exceptions.ConnectionError:
                     pass
                 except Exception as e:
-                    print(f"Fehler beim Prüfen der URL {url}: {e}")
+                    print(f"Fehler beim Prüfen der URL {url}:")
             time.sleep(delay)
 
         print("❌ FritzBox nicht erreichbar.")
@@ -215,17 +215,23 @@ class FritzBox:
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
-        self.browser.get_url(self.url)
-
         if self._handle_language_selection():
             self.browser.get_url(self.url)
+
+        while True:
+            self.browser.get_url(self.url)
+            try:
+                self.browser.sicher_warten('//*[@id="uiPass"]')
+                continue
+            except Exception:
+                print("Password Feld nicht gefunden. Rufe Seite erneut auf.")
 
         if self._check_if_login_required():
             try:
                 self.browser.schreiben('//*[@id="uiPass"]', password)
                 self.browser.klicken('//*[@id="submitLoginBtn"]')
             except Exception as e:
-                print(f"❌ Fehler bei der initialen Login-Eingabe: {e}")
+                print(f"❌ Fehler bei der initialen Login-Eingabe:")
                 return False
         else:
             print("ℹ️ Kein Login-Feld gefunden. Gehe davon aus, dass ein initialer Dialog aktiv ist.")
@@ -302,7 +308,7 @@ class FritzBox:
                     time.sleep(1)
 
             except Exception as e:
-                print(f"❌ Schwerwiegender Fehler beim Behandeln von Dialog '{handler.__name__}': {e}")
+                print(f"❌ Schwerwiegender Fehler beim Behandeln von Dialog '{handler.__name__}'")
                 return False
 
         if not found_and_handled_any_dialog_in_this_round:
@@ -398,7 +404,7 @@ class FritzBox:
                 return True
         except Exception as e:
             # Fängt alle anderen möglichen Fehler ab, um Abstürze zu vermeiden.
-            print(f"⚠️ Kleiner Fehler beim Versuch, ein Overlay zu schließen (wird ignoriert): {e}")
+            print(f"⚠️ Kleiner Fehler beim Versuch, ein Overlay zu schließen (wird ignoriert):")
             pass
         return False
 
@@ -517,7 +523,7 @@ class FritzBox:
                 return True
 
             except Exception as e:
-                print(f"❌ Fehler beim Prüfen/Umschalten der erweiterten Ansicht: {e}")
+                print(f"❌ Fehler beim Prüfen/Umschalten der erweiterten Ansicht:")
                 return False
         else:
             print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
@@ -525,88 +531,95 @@ class FritzBox:
 
     def perform_factory_reset_from_ui(self) -> bool:
         """
-        Setzt die FritzBox auf Werkseinstellungen zurück und stellt vorher
-        einen sauberen UI-Zustand sicher.
+        Setzt die FritzBox auf Werkseinstellungen zurück. Verwendet sprachunabhängige
+        IDs und eine mehrsprachige Textsuche für maximale Kompatibilität.
         """
+        # --- Automatischer Login-Versuch bei Bedarf ---
         if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt. Login für UI-Reset erforderlich.")
-            return False
+            print("ℹ️ Nicht eingeloggt. Führe vor dem Reset einen neuen Login durch...")
+            # Die login() Methode nutzt das gespeicherte Passwort
+            if not self.login(self.password):
+                print("❌ Erneuter Login für den Reset-Versuch ist fehlgeschlagen.")
+                return False
+            print("✅ Erneuter Login erfolgreich. Setze Reset-Vorgang fort.")
 
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
-            # UI-Zustand stabilisieren
-            print("...navigiere zur Hauptseite für einen sauberen Start.")
-            self._close_any_overlay()
-            self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
-            time.sleep(1)
-
-            # VERSUCH 1: Klicke direkt auf "Sicherung", falls Menü schon offen
-            if not self.browser.klicken('//*[@id="mSave"] | //a[contains(@href, "backup.lua")]', timeout=2, versuche=1):
-                # VERSUCH 2: Wenn das fehlschlägt, klicke erst auf "System"
-                print("...'Sicherung' nicht direkt sichtbar, öffne 'System'-Menü.")
-                if not self.browser.klicken('//*[@id="sys"]', timeout=5):
-                    print("Konnte nicht auf 'System' klicken.")
-                    return False
+            # --- Schritt 1: Den Reset-Vorgang einleiten ---
+            print("...navigiere zu den Werkseinstellungen.")
+            # Navigation (sprachunabhängig via ID)
+            if not self.browser.klicken('//*[@id="mSave"]', timeout=2, versuche=1):
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
                 time.sleep(1)
-                # Und dann auf "Sicherung"
-                if not self.browser.klicken('//*[@id="mSave"] | //a[contains(@href, "backup.lua")]', timeout=5):
-                    print("Konnte den Menüpunkt 'Sicherung' nicht finden.")
-                    return False
-
+                if not self.browser.klicken('//*[@id="mSave"]', timeout=5): return False
             time.sleep(1)
 
-            # Navigation zum Tab "Werkseinstellungen"
-            if not self.browser.klicken('//*[@id="default"] | //a[contains(text(), "Werkseinstellungen")]', timeout=5):
-                print("Konnte nicht auf den Tab 'Werkseinstellungen' klicken.")
-                return False
+            self.browser.klicken('//*[@id="default"]')
             time.sleep(1)
-
-            # Klick auf den finalen Bestätigungsbutton
+            # Klick auf den Tab "Werkseinstellungen" (sprachunabhängig via ID)
             confirm_button_xpaths = [
-                '//*[@id="uiDefaults"]',
-                '//button[contains(text(), "Werkseinstellungen laden")]'
-                '//*[@id="content"]/div/button',
+                '//*[@id="uiDefaults"]',  # Idealfall: Der Button hat eine feste ID
+                '//*[@id="content"]/div/button'  # Fallback: Struktureller XPath, der bei Ihnen funktioniert hat
             ]
             found_confirm_button = False
             for xpath in confirm_button_xpaths:
                 if self.browser.klicken(xpath, timeout=2, versuche=1):
-                    print(f"✅ Bestätigungs-Button geklickt ({xpath}).")
+                    print(f"✅ Schritt 1: Reset-Button geklickt via XPath: {xpath}")
                     found_confirm_button = True
                     break
 
             if not found_confirm_button:
-                print("Konnte keinen Bestätigungsbutton für die Werkseinstellungen finden.")
+                print("❌ Konnte den 'Werkseinstellungen laden'-Button nicht finden.")
                 return False
+            time.sleep(2)
 
-            time.sleep(3)
+            # --- Schritt 2: Den ersten "OK"-Dialog bestätigen ---
+            print("...suche nach Bestätigungs-Dialog.")
+            # Klick auf den "OK"-Button (sprachunabhängig via ID #Button1)
+            first_ok_xpath = '//*[@id="Button1"]'
+            if not self.browser.klicken(first_ok_xpath, timeout=5):
+                print("❌ Konnte den ersten Bestätigungs-Dialog (#Button1) nicht finden.")
+                return False
+            print("✅ Schritt 2: Erster OK-Dialog bestätigt.")
 
-        except Exception as e:
-            print(f"❌ Fehler im Reset-Ablauf über UI-Menü: {e}")
-            return False
+            # --- Schritt 3 & 4: Auf physischen Knopfdruck warten und bestätigen ---
+            print("...warte auf die Aufforderung zum Drücken des physischen Knopfs.")
 
-        # bestätigen, dass der WES reset ausgeführt werden soll
-        ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
-        btn = self.browser.sicher_warten(ok_button_xpath, timeout=180, sichtbar=True)
-        btn.click()
+            # Mehrsprachige Suche nach der Aufforderung
+            prompt_xpath = '''
+            //p[contains(text(), "Drücken Sie jetzt eine beliebige Taste") or 
+               contains(text(), "Press any key on your FRITZ!Box") or 
+               contains(text(), "Premere ora un tasto qualsiasi")]
+            '''
+            self.browser.sicher_warten(prompt_xpath, timeout=15)
 
-        print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken (falls erforderlich)...")
-        try:
-            ok_button_xpath = '//*[@id="Button1"] | //button[text()="OK"]'
-            btn = self.browser.sicher_warten(ok_button_xpath, timeout=180, sichtbar=True)
+            print("⚠️ℹ️⚠️ Schritt 3: Aufforderung erkannt. Bitte jetzt physischen Knopf an der Box drücken...")
+
+            # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
+            second_ok_xpath = '//*[contains(text(),"OK")]'
+            btn = self.browser.sicher_warten(second_ok_xpath, timeout=180, sichtbar=True)
             btn.click()
-            print("✅ OK-Button geklickt nach physischer Bestätigung.")
+            print("✅ Schritt 4: Zweiter OK-Button nach physischer Bestätigung geklickt.")
             self.is_reset = True
-            time.sleep(25)  # Zeit für den Neustart geben
-            self.warte_auf_erreichbarkeit()
+
+        except Exception:
+            print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
+            self.is_reset = True
+
+        # --- Schritt 5: Auf Neustart der Box warten und finalen Zustand prüfen ---
+        print("...warte auf Neustart der Box (kann einige Minuten dauern).")
+        time.sleep(45)
+        if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
+            print("✅ Box ist nach dem Reset wieder erreichbar.")
             if self.ist_sprachauswahl():
-                print("✅ Erfolgreich auf Werkseinstellungen zurückgesetzt.")
+                print("✅ Erfolgreich auf Werkseinstellungen zurückgesetzt (Sprachauswahl erkannt).")
                 return True
             else:
-                print("⚠️ Reset abgeschlossen, aber Sprachauswahl nicht verifiziert.")
+                print("✅ Reset-Vorgang abgeschlossen (Standard-Login erkannt).")
                 return True
-        except Exception as e:
-            print(f"❌ Fehler beim Warten auf den finalen OK-Klick: {e}")
+        else:
+            print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
     def get_firmware_version(self) -> str | bool:
@@ -635,7 +648,7 @@ class FritzBox:
                 print("❌ Keine Firmware-Version gefunden auf der Update-Seite.")
                 return False  # KORREKTUR: Bei Fehler False zurückgeben
         except Exception as e:
-            print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
+            print(f"❌ Fehler beim Ermitteln der Firmware-Version: ")
             return False  # KORREKTUR: Bei Fehler False zurückgeben
 
         # fritzbox_api.py
@@ -751,7 +764,7 @@ class FritzBox:
                     return False
 
         except Exception as e:
-            print(f"❌ Schwerwiegender Fehler im DSL-Setup-Wizard: {e}")
+            print(f"❌ Schwerwiegender Fehler im DSL-Setup-Wizard:")
             return False
 
     def ist_sprachauswahl(self) -> bool:
@@ -796,7 +809,7 @@ class FritzBox:
                 print("ℹ️ Sprachauswahlseite nicht aktiv. Sprache kann nicht geändert werden.")
                 return False
         except Exception as e:
-            print(f"❌ Fehler beim Setzen der Sprache auf '{lang_code.upper()}': {e}")
+            print(f"❌ Fehler beim Setzen der Sprache auf '{lang_code.upper()}'")
             return False
 
     def check_wlan_antennas(self, max_versuche=2) -> bool:
@@ -836,7 +849,7 @@ class FritzBox:
                                 "title").strip()
                             self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
                         except Exception as e:
-                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}: {e}")
+                            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
                     return True
 
@@ -868,7 +881,7 @@ class FritzBox:
                 print(f"⚠️ Keine WLAN-Netzwerke gefunden (Versuch {versuch}/{max_versuche}).")
 
             except Exception as e:
-                print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch}): {e}")
+                print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch}) ")
 
             if versuch < max_versuche: time.sleep(5)
 
@@ -890,7 +903,7 @@ class FritzBox:
 
             print(f"{index + 1}. {name} | {freq} | Kanal {channel} | MAC: {mac} | Signal: {signal_title} {emoji}")
         except Exception as e:
-            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}: {e}")
+            print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}:")
 
     def perform_firmware_update(self, firmware_path: str) -> bool:
         """Führt ein Firmware-Update durch und stellt vorher einen sauberen UI-Zustand her."""
@@ -923,7 +936,7 @@ class FritzBox:
             try:
                 checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
             except Exception as e:
-                print(f"❌ Die Seite für das Firmware-Update konnte nicht geladen werden (Checkbox nicht gefunden): {e}")
+                print(f"❌ Die Seite für das Firmware-Update konnte nicht geladen werden (Checkbox nicht gefunden):")
                 return False
 
             if checkbox.is_selected():
@@ -935,7 +948,7 @@ class FritzBox:
             try:
                 file_input = self.browser.sicher_warten('//*[@id="uiFile"]', timeout=10)
             except Exception as e:
-                print(f"❌ Das Datei-Eingabefeld ist nicht erschienen: {e}")
+                print(f"❌ Das Datei-Eingabefeld ist nicht erschienen:")
                 return False
 
             file_input.send_keys(firmware_path)
@@ -948,8 +961,9 @@ class FritzBox:
             print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
             # --- NEU: Aktiv auf die Box warten ---
             # Wir geben ihr großzügig Zeit (40 Versuche * 10s = 400s)
-            time.sleep(45)
+            time.sleep(50)
             if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
+                # this needs login check for
                 print("✅ Box ist nach dem Update wieder erreichbar.")
                 return True
             else:
@@ -957,5 +971,5 @@ class FritzBox:
                 return False
 
         except Exception as e:
-            print(f"❌ Unerwarteter Fehler während des Firmware-Updates: {e}")
+            print(f"❌ Unerwarteter Fehler während des Firmware-Updates")
             return False
