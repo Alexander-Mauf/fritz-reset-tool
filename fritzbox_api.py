@@ -9,7 +9,7 @@ from functools import wraps
 import re
 import sys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
 from browser_utils import Browser
@@ -267,7 +267,7 @@ class FritzBox:
             print(f"❌ Konnte keine neue Browser-Instanz erstellen: {e}")
             return False
         print("Reload der startseite")
-        self.browser.get_url(self.url)
+        self.browser.reload(self.url)
         print("🔐 Login wird versucht...")
 
 
@@ -421,6 +421,20 @@ class FritzBox:
              # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
             if self.browser.sicher_warten('//*[@id="uiForward"]', timeout=1, sichtbar=False):
                 print("...behandle initialen DSL-Setup-Dialog.")
+                try:
+                    print("Versuche den Schritt zu überspringen.")
+                    self.browser.klicken('//*[@id="uiSkip"]', timeout=3, versuche=1)
+                except Exception:
+                    print("skip hat nicht funktioniert, versuche nun generischen anbieter auszuwählen")
+                    try:
+                        # Dropdown-Element auswählen
+                        dropdown = Select(self.browser.find_element_by_xpath('//*[@id="uiSuperprovider"]'))
+                        # Wert auf "more" setzen
+                        dropdown.select_by_value("more")
+                        print("Generischen Anbieter ausgewählt.")
+                    except Exception as e:
+                        print(f"Fehler beim Auswählen des Anbieters: {e}")
+
                 self.browser.klicken('//*[@id="uiForward"]', timeout=3, versuche=1)
                 return True
         except Exception:
@@ -909,6 +923,12 @@ class FritzBox:
                 time.sleep(5)
 
                 # --- Logik für MODERNE UI (div-basiert) ---
+                try:
+                    self.browser.klicken('//button[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
+                except Exception as e:
+                    print(e)
+                    pass
+
                 modern_row_xpath = '//div[@class="flexRow" and .//div[@prefid="rssi"]]'
                 num_modern_rows = len(self.browser.driver.find_elements(By.XPATH, modern_row_xpath))
 
