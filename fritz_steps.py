@@ -131,6 +131,8 @@ def reset_fritzbox(driver): #without login
         '//*[@id="dialogFoot"]/a',
         '//a[contains(text(), "Passwort vergessen")]',
         '//button[contains(text(), "Passwort vergessen")]',
+        '//a[contains(text(), "Kennwort vergessen")]',
+        '//button[contains(text(), "Kennwort vergessen")]',
     ]
 
     for xpath in kandidaten:
@@ -141,11 +143,18 @@ def reset_fritzbox(driver): #without login
         except:
             continue
     else:
-        raise Exception("❌ Kein Reset-Link gefunden.")
+        print("❌ Kein Reset-Link gefunden.")
+        return False
 
-    klicken(driver, '//*[@id="sendFacReset"]')
-    print("🔁 Reset ausgelöst, warte auf Neustart...")
-    time.sleep(50)
+    try:
+        klicken(driver, '//*[@id="sendFacReset"]')
+        print("🔁 Reset ausgelöst, warte auf Neustart...")
+        time.sleep(50)
+        return True
+
+    except Exception:
+        print("❌ Fehler beim Bestätigen des Resets.")
+        return False
 
 def checkbox_fehlerdaten_dialog(driver):
     print("🛑 Fehlerdaten-Checkbox prüfen...")
@@ -172,10 +181,11 @@ def wlan_antenne_check(driver, max_versuche=2):
     for versuch in range(1, max_versuche + 1):
         try:
             klicken(driver, '//*[@id="wlan"]')
-            time.sleep(1)
             klicken(driver, '//*[@id="chan"]')
-            time.sleep(5)
-
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located(
+                (By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]'))
+            )
             rows = driver.find_elements(By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]')
             if rows:
                 print(f"📶 {len(rows)} Netzwerke gefunden. Verarbeite...")
