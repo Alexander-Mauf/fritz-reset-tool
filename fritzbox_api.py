@@ -256,6 +256,16 @@ class FritzBox:
             return False
         if password is not None and password != "":
             self.password = password
+        if self.browser.driver is None:
+            print("⚠️ Browser-Instanz fehlt – starte neue WebDriver-Instanz...")
+        try:
+            from browser_utils import setup_browser, Browser
+            new_driver = setup_browser()
+            self.browser = Browser(new_driver)
+            print("✅ Neuer Browser gestartet.")
+        except Exception as e:
+            print(f"❌ Konnte keine neue Browser-Instanz erstellen: {e}")
+            return False
         print("Reload der startseite")
         self.browser.get_url(self.url)
         print("🔐 Login wird versucht...")

@@ -38,6 +38,14 @@ class WorkflowOrchestrator:
         max_attempts = 2
         for attempt in range(max_attempts):
             try:
+                if self.browser is None or self.browser.driver is None:
+                    print("⚠️ Browser-Instanz verloren – starte neu...")
+                    from browser_utils import setup_browser, Browser
+                    self.browser_driver = setup_browser()
+                    self.browser = Browser(self.browser_driver)
+                    self.fritzbox.browser = self.browser
+                    print("✅ Neuer Browser verbunden.")
+
                 result = func(*args, **kwargs)
 
                 # Eine explizite Rückgabe von False durch die Funktion signalisiert einen kontrollierten Fehlschlag.
