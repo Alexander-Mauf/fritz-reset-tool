@@ -641,6 +641,7 @@ class FritzBox:
 
             ok_xpath = '//button[contains(text(),"OK")]'
             retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
+            tries = 0
             while True:
                 try:
                     btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
@@ -657,6 +658,10 @@ class FritzBox:
                     except Exception:
                         print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
                         time.sleep(10)
+                tries +=1
+                if tries >8:
+                    print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
+                    return False
 
         except Exception:
             print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
