@@ -36,6 +36,21 @@ class FirmwareManager:
                 "final": "08.02",
                 "final_file": "FRITZ.Box_7530-08.02.image"
             },
+            "7490": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "07.60",
+                "final_file": "FRITZ.Box_7490-07.60.image"
+            },
+            "7582": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "07.18",
+                "final_file": "FRITZ.Box_7582-07.18.image"
+            },
+            "6660": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "08.03",
+                "final_file": "FRITZ.Box_6660_Cable-08.03.image"
+            },
             "6890": {
                 # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.57",
