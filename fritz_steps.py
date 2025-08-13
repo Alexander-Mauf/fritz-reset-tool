@@ -276,9 +276,9 @@ def firmware_version_pruefen_wrapper(driver):
 def erstelle_standard_steps(password, firmware_pfad):
     return [
         ("Login durchführen", lambda d: login(d, password)),
-        ("WLAN-Antennen prüfen", wlan_antenne_check),
         ("Firmware-Version prüfen", firmware_version_pruefen_wrapper),
         ("Firmware-Update oder Reset durchführen", lambda d: tim_update_oder_reset(d, firmware_pfad)),
+        ("WLAN-Antennen prüfen", wlan_antenne_check),
     ]
 
 def get_steps_from_branding(driver, password, firmware_pfad):
