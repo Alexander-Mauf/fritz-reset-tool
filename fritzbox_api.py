@@ -300,11 +300,11 @@ class FritzBox:
         max_dialog_attempts = 15
         print("...starte Abarbeitung aller möglichen Dialoge...")
         dialog_handlers = [
+            self.dsl_setup_init,
             self.handle_registration_dialog,
             self.neue_firmware_dialog,
-            self.dsl_setup_init,
             self.checkbox_fehlerdaten_dialog,
-            self.skip_configuration
+            self.skip_configuration,
         ]
 
         for attempt in range(max_dialog_attempts):
