@@ -96,6 +96,29 @@ class Browser:
             print(f"❌ Fehler beim Navigieren zu {url}")
             return False
 
+    def reload(self, url, cache_bust=True, clear_cookies=True):
+        """Erneutes Laden der Seite inkl. einfacher Cache-Umgehung."""
+        try:
+            if self.driver is None:
+                print("❌ Browser-Driver ist None (geschlossen).")
+                return False
+            if clear_cookies:
+                try:
+                    self.driver.delete_all_cookies()
+                except Exception:
+                    pass
+            final = url
+            if cache_bust:
+                ts = int(time.time() * 1000)
+                sep = '&' if ('?' in url) else '?'
+                final = f"{url}{sep}_={ts}"
+            self.driver.get(final)
+            return True
+        except Exception:
+            print("❌ Fehler bei reload()")
+            return False
+
+
     def quit(self):
         """Schließt den Browser."""
         if self.driver:
