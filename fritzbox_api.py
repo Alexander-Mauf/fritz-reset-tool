@@ -828,6 +828,7 @@ class FritzBox:
                     return f"{model_number}_LTE"
                 if "LTE" in text_content:
                     return f"{model_number}_LTE"
+                self.model
                 return model_number
         except Exception:
             return None
@@ -1136,7 +1137,7 @@ class FritzBox:
         final_path = self.firmware_manager.get_firmware_path(self.box_model, "final")
         return self.perform_firmware_update(final_path) if final_path else False
 
-    def _show_wlan_summary(self) -> bool:
+    def show_wlan_summary(self) -> bool:
         """Zeigt gespeicherte WLAN-Scan-Ergebnisse an."""
         if not self.wlan_scan_results:
             return True

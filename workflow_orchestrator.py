@@ -39,6 +39,12 @@ class WorkflowOrchestrator:
         for attempt in range(max_attempts):
             try:
                 if self.browser is None or self.browser.driver is None:
+                    try:
+                        self.browser.quit()
+                    except Exception as e:
+                        "Wir wollen hier nur abfangen, dass wir nicht mehrere Browserinstancen spawnen."
+                        pass
+
                     print("⚠️ Browser-Instanz verloren – starte neu...")
                     from browser_utils import setup_browser, Browser
                     self.browser_driver = setup_browser()
@@ -130,14 +136,13 @@ class WorkflowOrchestrator:
             workflow_steps = [
                 ("FritzBox Erreichbarkeit prüfen", self.fritzbox.warte_auf_erreichbarkeit),
                 ("Login durchführen", self.fritzbox.login, password),
-                ("Firmware-Version ermitteln", self.fritzbox.get_firmware_version),
                 ("Box-Modell ermitteln", self.fritzbox.get_box_model),
-                ("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas),
+                ("Firmware-Version ermitteln", self.fritzbox.get_firmware_version),
                 ("Erweiterte Ansicht prüfen/aktivieren", self.fritzbox.activate_expert_mode_if_needed),
-                ("Versionsinformationen vorbereiten", self.fritzbox._prepare_version_info),
-                ("Firmware Update Routine", self.fritzbox._update_firmware),
+                ("Firmware Update Routine", self.fritzbox.perform_firmware_update),
+                ("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas),
                 ("Werkseinstellungen über UI", self.fritzbox.perform_factory_reset_from_ui),
-                ("WLAN-Scan Zusammenfassung", self.fritzbox._show_wlan_summary),
+                ("WLAN-Scan Zusammenfassung", self.fritzbox.show_wlan_summary),
             ]
 
             for step_name, func, *args in workflow_steps:
