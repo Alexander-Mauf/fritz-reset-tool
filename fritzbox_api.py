@@ -756,6 +756,7 @@ class FritzBox:
     def get_firmware_version(self) -> str | bool:
         """Ermittelt die aktuelle Firmware-Version der FritzBox."""
         print("ℹ️ Ermittle Firmware-Version...")
+        self._close_any_overlay()
         try:
             if not self.is_logged_in_and_menu_ready():
                 print("❌ Nicht eingeloggt oder Menü nicht bereit. Login für Versionsprüfung erforderlich.")
