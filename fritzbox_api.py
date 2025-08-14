@@ -380,22 +380,25 @@ class FritzBox:
     def continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
         print("versuche die Einrichtung fortzusetzen")
-        #self.browser.klicken("//*[@id='Button1']") # Einrichtung jetzt beenden
         try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
-            btn.click()
-            print("Clicking the Einrichtung jetzt beenden Button.")
-        except:
-            print("Einrichtung jetzt beenden wasn't clicked successfully")
+            try:
+                btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
+                btn.click()
+                print("Clicking the Einrichtung jetzt beenden Button.")
+            except:
+                print("Einrichtung jetzt beenden wasn't clicked successfully")
 
 
-        #self.browser.klicken('//*[@id="Button1"]') # textinhalt Einrichtung abschließen
-        try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
-            btn.click()
-            print("Clicking the Einrichtung abschließen Button.")
+            #self.browser.klicken('//*[@id="Button1"]') # textinhalt Einrichtung abschließen
+            try:
+                btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
+                btn.click()
+                print("Clicking the Einrichtung abschließen Button.")
+            except:
+                print("Einrichtung abschließen wasn't clicked successfully")
+            return True
         except:
-            print("Einrichtung abschließen wasn't clicked successfully")
+            return False
 
 
 
