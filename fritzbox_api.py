@@ -148,6 +148,7 @@ class FritzBox:
         self.box_model = None
         self.is_wifi_checked = False
         self.wlan_scan_results = []
+        self.firmware_manager = FirmwareManager()
 
     def warte_auf_erreichbarkeit(self, versuche=20, delay=5) -> bool:
         """Wartet, bis die FritzBox unter einer bekannten IP erreichbar ist."""
@@ -778,11 +779,12 @@ class FritzBox:
         xpaths_to_check = [
             '//*[@id="blueBarTitel"]',
             '//span[contains(@class, "version_text")]',
-            '//div[@class="boxInfo"]/span'
+            '//div[@class="boxInfo"]/span',
+            '//*[@id="uiVersion"]/div/div'
         ]
         for xpath in xpaths_to_check:
             try:
-                element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                element = self.browser.sicher_warten(xpath, timeout=3, sichtbar=False)
                 model = self._extract_model_number(element)
                 if model:
                     self.box_model = model
@@ -791,13 +793,12 @@ class FritzBox:
             except Exception:
                 continue
 
-        # --- Stufe 2: Navigation zur Übersichtsseite ---
         print("   (Stufe 2/3: Suche auf Übersichtsseite)")
         if self.browser.klicken('//*[@id="overview"] | //*[@id="mHome"]', timeout=3):
             time.sleep(2)
             for xpath in xpaths_to_check:
                 try:
-                    element = self.browser.sicher_warten(xpath, timeout=1, sichtbar=False)
+                    element = self.browser.sicher_warten(xpath, timeout=3, sichtbar=False)
                     model = self._extract_model_number(element)
                     if model:
                         self.box_model = model
@@ -805,6 +806,7 @@ class FritzBox:
                         return self.box_model
                 except Exception:
                     continue
+
 
         print("❌ Box-Modell konnte nicht identifiziert werden.")
         self.box_model = "UNKNOWN"
@@ -828,7 +830,7 @@ class FritzBox:
                     return f"{model_number}_LTE"
                 if "LTE" in text_content:
                     return f"{model_number}_LTE"
-                self.model
+                self.model = model_number
                 return model_number
         except Exception:
             return None
@@ -1110,8 +1112,10 @@ class FritzBox:
         self._model_info = self.firmware_manager.firmware_mapping.get(self.box_model)
         return True
 
-    def _update_firmware(self) -> bool:
+    @require_login
+    def update_firmware(self) -> bool:
         """Entscheidet und führt das passende Firmware-Update durch."""
+        self._prepare_version_info()
         if self._major_version < 7 and self._model_info and "bridge" in self._model_info:
             print("ℹ️ Mehrstufiges Update erforderlich (alt -> bridge -> final).")
             return self._perform_bridge_update()
