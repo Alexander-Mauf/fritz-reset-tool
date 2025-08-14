@@ -378,7 +378,8 @@ class FritzBox:
 
     def _continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
-        self.browser.klicken("//*[@id='Button1']") # Einrichtung jetzt beenden
+        print("versuche die Einrichtung fortzusetzen")
+        #self.browser.klicken("//*[@id='Button1']") # Einrichtung jetzt beenden
         try:
             btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
             btn.click()
@@ -387,7 +388,7 @@ class FritzBox:
             print("Einrichtung jetzt beenden wasn't clicked successfully")
 
 
-        self.browser.klicken('//*[@id="Button1"]') # textinhalt Einrichtung abschließen
+        #self.browser.klicken('//*[@id="Button1"]') # textinhalt Einrichtung abschließen
         try:
             btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
             btn.click()
