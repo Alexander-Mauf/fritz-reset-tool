@@ -376,7 +376,7 @@ class FritzBox:
 
         return True
 
-    def _continue_setup(self) -> bool:
+    def continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
         print("versuche die Einrichtung fortzusetzen")
         #self.browser.klicken("//*[@id='Button1']") # Einrichtung jetzt beenden
