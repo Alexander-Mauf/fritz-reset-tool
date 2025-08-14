@@ -18,6 +18,14 @@ class WorkflowOrchestrator:
         self.fritzbox = FritzBox(self.browser)
         self.firmware_manager = FirmwareManager() # FirmwareManager hier instanziieren
 
+    def browser_still_alive(self):
+        try:
+            # Ping: kleine Abfrage an den Browser
+            self.browser.driver.title
+            return True
+        except Exception:
+            return False
+
     def _fenster_in_vordergrund_holen(self):
         """Bringt das CMD-Fenster in den Vordergrund."""
         try:
@@ -38,7 +46,7 @@ class WorkflowOrchestrator:
         max_attempts = 2
         for attempt in range(max_attempts):
             try:
-                if self.browser is None or self.browser.driver is None:
+                if not self.browser_still_alive():
                     try:
                         self.browser.quit()
                     except Exception as e:
