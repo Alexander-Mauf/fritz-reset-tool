@@ -142,9 +142,15 @@ class WorkflowOrchestrator:
             ]
 
             for step_name, func, *args in workflow_steps:
-                if not self._run_step_with_retry(step_name, func, *args):
-                    return None
-                self._fenster_in_vordergrund_holen()
+                try:
+                    if not self._run_step_with_retry(step_name, func, *args):
+                        return None
+                    self._fenster_in_vordergrund_holen()
+                except RuntimeError("RESTART_NEW_BOX"):
+                    return "restart"
+                except Exception:
+                    raise Exception
+
 
             print("\n🎉 Workflow für diese FritzBox erfolgreich abgeschlossen!")
             auswahl = input("\n(B)eenden oder (N)eue FritzBox bearbeiten? ").strip().lower()
@@ -153,7 +159,7 @@ class WorkflowOrchestrator:
         except Exception as e:
             print(f"\n❌ Schwerwiegender Fehler im Workflow: {e}")
             time.sleep(10)
-            return None
+            raise Exception
 
         finally:
             if self.browser:
