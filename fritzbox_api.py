@@ -1099,3 +1099,56 @@ class FritzBox:
         except Exception as e:
             print(f"❌ Unerwarteter Fehler während des Firmware-Updates")
             return False
+
+    def _prepare_version_info(self) -> bool:
+        """Bereitet Versions- und Modellinformationen vor."""
+        current_version_str = self.os_version or "0.0"
+        match = re.search(r'(\d{1,2}\.\d{2})', current_version_str)
+        self._clean_current_version = match.group(1) if match else ""
+        self._major_version = int(self._clean_current_version.split('.')[0]) if self._clean_current_version else 0
+        self._model_info = self.firmware_manager.firmware_mapping.get(self.box_model)
+        return True
+
+    def _update_firmware(self) -> bool:
+        """Entscheidet und führt das passende Firmware-Update durch."""
+        if self._major_version < 7 and self._model_info and "bridge" in self._model_info:
+            print("ℹ️ Mehrstufiges Update erforderlich (alt -> bridge -> final).")
+            return self._perform_bridge_update()
+
+        if self._model_info:
+            target_version = self._model_info.get("final", "")
+            if self._clean_current_version and target_version and \
+                    self._clean_current_version.replace("0", "") == target_version.replace("0", ""):
+                print(f"✅ Firmware ist bereits auf Zielversion ({self._clean_current_version}).")
+                return True
+            print(f"ℹ️ Update von {self._clean_current_version} auf {target_version} wird durchgeführt.")
+            final_path = self.firmware_manager.get_firmware_path(self.box_model, "final")
+            return self.perform_firmware_update(final_path) if final_path else False
+
+        print("Keine Update-Regel für dieses Modell gefunden.")
+        return True
+
+    def _perform_bridge_update(self) -> bool:
+        """Mehrstufiges Update: erst Bridge, dann Final."""
+        bridge_path = self.firmware_manager.get_firmware_path(self.box_model, "bridge")
+        if bridge_path and not self.perform_firmware_update(bridge_path):
+            return False
+        final_path = self.firmware_manager.get_firmware_path(self.box_model, "final")
+        return self.perform_firmware_update(final_path) if final_path else False
+
+    def _show_wlan_summary(self) -> bool:
+        """Zeigt gespeicherte WLAN-Scan-Ergebnisse an."""
+        if not self.wlan_scan_results:
+            return True
+        print("\n\n📡📋 Zusammenfassung des WLAN-Scans 📡📋")
+        for i, network_data in enumerate(self.wlan_scan_results):
+            self.print_wlan_entry(
+                index=i,
+                name=network_data.get("name"),
+                freq=network_data.get("frequency"),
+                channel=network_data.get("channel"),
+                mac=network_data.get("mac"),
+                signal_title=network_data.get("signal")
+            )
+        print("--------------------------------------------------")
+        return True

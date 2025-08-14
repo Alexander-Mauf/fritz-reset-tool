@@ -120,94 +120,38 @@ class WorkflowOrchestrator:
                 print("❓ Ungültige Eingabe. Bitte wähle w/ü/b/n.")
 
     def run_full_workflow(self, password: str) -> str | None:
-        """Führt den gesamten FritzBox-Verwaltungs-Workflow mit mehrstufiger Update-Logik aus."""
-        # ... (der Anfang der Methode bis zum try-Block bleibt gleich)
+        """Führt den gesamten FritzBox-Verwaltungs-Workflow anhand einer flexiblen Schritt-Liste aus."""
         self.browser_driver = setup_browser()
         self.browser = Browser(self.browser_driver)
         self.fritzbox = FritzBox(self.browser)
         self._fenster_in_vordergrund_holen()
 
         try:
-            # Schritte 1-6: Login, Versionen ermitteln, WLAN prüfen, erweiterte Ansicht
-            if not self._run_step_with_retry("FritzBox Erreichbarkeit prüfen",
-                                             self.fritzbox.warte_auf_erreichbarkeit): return None
-            if not self._run_step_with_retry("Login durchführen", self.fritzbox.login, password): return None
-            if not self._run_step_with_retry("Firmware-Version ermitteln",
-                                             self.fritzbox.get_firmware_version): return None
-            if not self._run_step_with_retry("Box-Modell ermitteln", self.fritzbox.get_box_model): return None
-            if not self._run_step_with_retry("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas): return None
-            if not self._run_step_with_retry("Erweiterte Ansicht prüfen/aktivieren",
-                                             self.fritzbox.activate_expert_mode_if_needed): return None
+            workflow_steps = [
+                ("FritzBox Erreichbarkeit prüfen", self.fritzbox.warte_auf_erreichbarkeit),
+                ("Login durchführen", self.fritzbox.login, password),
+                ("Firmware-Version ermitteln", self.fritzbox.get_firmware_version),
+                ("Box-Modell ermitteln", self.fritzbox.get_box_model),
+                ("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas),
+                ("Erweiterte Ansicht prüfen/aktivieren", self.fritzbox.activate_expert_mode_if_needed),
+                ("Versionsinformationen vorbereiten", self.fritzbox._prepare_version_info),
+                ("Firmware Update Routine", self.fritzbox._update_firmware),
+                ("Werkseinstellungen über UI", self.fritzbox.perform_factory_reset_from_ui),
+                ("WLAN-Scan Zusammenfassung", self.fritzbox._show_wlan_summary),
+            ]
 
-            # --- Ab hier die Update-Logik ---
-            print("Starte Firmware Update Routine.")
-
-            # KORREKTUR: Robuster Versionsvergleich
-            current_version_str = self.fritzbox.os_version or "0.0"
-            # Extrahiert die reine Versionsnummer (z.B. "07.57" oder "7.13")
-            current_version_match = re.search(r'(\d{1,2}\.\d{2})', current_version_str)
-            clean_current_version = current_version_match.group(1) if current_version_match else ""
-
-            major_version = int(clean_current_version.split('.')[0]) if clean_current_version else 0
-
-            model_info = self.firmware_manager.firmware_mapping.get(self.fritzbox.box_model)
-
-            # Fall 1: Mehrstufiges Update
-            if major_version < 7 and model_info and "bridge" in model_info:
-                print("ℹ️ Mehrstufiges Update erforderlich (alt -> bridge -> final).")
-                # ... (die Logik für das mehrstufige Update bleibt hier unverändert)
-
-            # Fall 2: Direktes Update, aber nur wenn die Versionen NICHT übereinstimmen
-            elif model_info:
-                target_version = model_info.get("final", "")
-                if clean_current_version and target_version and clean_current_version.replace("0",
-                                                                                              "") == target_version.replace(
-                        "0", ""):
-                    print(
-                        f"✅ Firmware ist bereits auf der Zielversion ({clean_current_version}). Kein Update nötig.")
-                else:
-                    print(f"ℹ️ Update von {clean_current_version} auf {target_version} wird durchgeführt.")
-                    final_path = self.firmware_manager.get_firmware_path(self.fritzbox.box_model, "final")
-                    if final_path:
-                        update_step = lambda: self.fritzbox.perform_firmware_update(final_path)
-                        if not self._run_step_with_retry("Firmware-Update (Final)", update_step): return None
-                        # ... (Logik nach dem Update bleibt unverändert) ...
-            else:
-                print("Keine Update-Regel für dieses Modell gefunden.")
-
-            # Reset als separate Option
-            print("Start Workflow für Werkseinstellungen.")
-            if not self._run_step_with_retry("Werkseinstellungen über UI",
-                                             self.fritzbox.perform_factory_reset_from_ui):
-                return None
-
-            # --- NEU: Finale Zusammenfassung des WLAN-Scans anzeigen ---
-            if self.fritzbox.wlan_scan_results:
-                print("\n\n📡📋 Zusammenfassung des WLAN-Scans 📡📋")
-                for i, network_data in enumerate(self.fritzbox.wlan_scan_results):
-                    # Rufe die existierende Funktion aus dem FritzBox-Objekt auf
-                    # und entpacke die Werte aus dem Dictionary.
-                    self.fritzbox.print_wlan_entry(
-                        index=i,
-                        name=network_data.get("name"),
-                        freq=network_data.get("frequency"),
-                        channel=network_data.get("channel"),
-                        mac=network_data.get("mac"),
-                        signal_title=network_data.get("signal")
-                    )
-                print("--------------------------------------------------")
+            for step_name, func, *args in workflow_steps:
+                if not self._run_step_with_retry(step_name, func, *args):
+                    return None
 
             print("\n🎉 Workflow für diese FritzBox erfolgreich abgeschlossen!")
-            while True:
-                auswahl = input("\n(B)eenden oder (N)eue FritzBox bearbeiten? ").strip().lower()
-                if auswahl == 'b':
-                    return None
-                else:
-                    return "restart"
+            auswahl = input("\n(B)eenden oder (N)eue FritzBox bearbeiten? ").strip().lower()
+            return None if auswahl == 'b' else "restart"
 
         except Exception as e:
-            print(f"\n❌ Schwerwiegender Fehler im Workflow")
+            print(f"\n❌ Schwerwiegender Fehler im Workflow: {e}")
             return None
+
         finally:
             if self.browser:
                 self.browser.quit()
