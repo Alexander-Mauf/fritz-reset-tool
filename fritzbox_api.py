@@ -498,7 +498,17 @@ class FritzBox:
              # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
             if self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False):
                 print("...überspringe generischen Konfigurations-Dialog.")
-                self.browser.klicken('//*[@id="Button1"]', timeout=3, versuche=1)
+                btn = self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False)
+                try:
+                    btn.click()
+                except Exception:
+                    try:
+                        self.browser.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+                        self.browser.driver.execute_script("arguments[0].click();", btn)
+                        print("✅ OK-Button via JavaScript-Klick gedrückt.")
+                    except Exception as e:
+                        print(f"❌ OK-Button konnte auch via JS nicht gedrückt werden: {e}")
+                        return False
                 return True
         except Exception:
             pass
