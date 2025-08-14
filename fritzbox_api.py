@@ -345,6 +345,7 @@ class FritzBox:
         """
         print("⚙️ Starte Runde zur Behandlung von Post-Login-Dialogen...")
         dialog_handlers = [
+            self.continue_setup,
             self.neue_firmware_dialog,
             self.dsl_setup_init,
             self.checkbox_fehlerdaten_dialog,
@@ -374,6 +375,27 @@ class FritzBox:
             print("✅ Einige Dialoge in dieser Runde behandelt.")
 
         return True
+
+    def _continue_setup(self) -> bool:
+        """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
+        self.browser.klicken("//*[@id='Button1']") # Einrichtung jetzt beenden
+        try:
+            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
+            btn.click()
+            print("Clicking the Einrichtung jetzt beenden Button.")
+        except:
+            print("Einrichtung jetzt beenden wasn't clicked successfully")
+
+
+        self.browser.klicken('//*[@id="Button1"]') # textinhalt Einrichtung abschließen
+        try:
+            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
+            btn.click()
+            print("Clicking the Einrichtung abschließen Button.")
+        except:
+            print("Einrichtung abschließen wasn't clicked successfully")
+
+
 
     def _handle_any_dialog_button(self) -> bool:
         """
