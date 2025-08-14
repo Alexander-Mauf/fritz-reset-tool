@@ -338,44 +338,6 @@ class FritzBox:
         self.is_logged_in = False
         return False
 
-    def _handle_post_login_dialogs_round(self) -> bool:
-        """
-        Versucht eine Runde aller bekannten Post-Login-Dialoge zu behandeln.
-        Gibt True zurück, wenn die Runde ohne kritischen Fehler abgeschlossen wurde.
-        Gibt False zurück, wenn ein kritischer Fehler (z.B. Logout) erkannt wurde.
-        """
-        print("⚙️ Starte Runde zur Behandlung von Post-Login-Dialogen...")
-        dialog_handlers = [
-            self.continue_setup,
-            self.neue_firmware_dialog,
-            self.dsl_setup_init,
-            self.checkbox_fehlerdaten_dialog,
-            self.skip_configuration,
-        ]
-
-        found_and_handled_any_dialog_in_this_round = False
-
-        for handler in dialog_handlers:
-            try:
-                if not self.is_logged_in_and_menu_ready(timeout=2):
-                    print(f"❌ Logout oder unerwarteter Zustand vor Aufruf von '{handler.__name__}'.")
-                    return False
-
-                handler_result = handler()
-                if handler_result:
-                    found_and_handled_any_dialog_in_this_round = True
-                    time.sleep(1)
-
-            except Exception as e:
-                print(f"❌ Schwerwiegender Fehler beim Behandeln von Dialog '{handler.__name__}'")
-                return False
-
-        if not found_and_handled_any_dialog_in_this_round:
-            print("ℹ️ Keine weiteren bekannten Dialoge in dieser Runde gefunden.")
-        else:
-            print("✅ Einige Dialoge in dieser Runde behandelt.")
-
-        return True
 
     def continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
