@@ -13,10 +13,19 @@ class WorkflowOrchestrator:
     Koordiniert die Schritte, handhabt Retries und Benutzerinteraktion.
     """
     def __init__(self):
-        self.browser_driver = setup_browser()
-        self.browser = Browser(self.browser_driver)
-        self.fritzbox = FritzBox(self.browser)
+        self.browser_driver = None
+        self.browser = None
+        self.fritzbox = None
         self.firmware_manager = FirmwareManager() # FirmwareManager hier instanziieren
+
+    def ensure_browser(self):
+        if self.browser is None or not self.browser_still_alive():
+            self.browser_driver = setup_browser()
+            self.browser = Browser(self.browser_driver)
+            if not self.fritzbox:
+                self.fritzbox = FritzBox(self.browser)
+            else:
+                self.fritzbox.browser = self.browser
 
     def browser_still_alive(self):
         try:
@@ -46,19 +55,7 @@ class WorkflowOrchestrator:
         max_attempts = 2
         for attempt in range(max_attempts):
             try:
-                if not self.browser_still_alive():
-                    try:
-                        self.browser.quit()
-                    except Exception as e:
-                        "Wir wollen hier nur abfangen, dass wir nicht mehrere Browserinstancen spawnen."
-                        pass
-
-                    print("⚠️ Browser-Instanz verloren – starte neu...")
-                    from browser_utils import setup_browser, Browser
-                    self.browser_driver = setup_browser()
-                    self.browser = Browser(self.browser_driver)
-                    self.fritzbox.browser = self.browser
-                    print("✅ Neuer Browser verbunden.")
+                self.ensure_browser()
 
                 result = func(*args, **kwargs)
 
