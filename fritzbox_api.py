@@ -424,6 +424,7 @@ class FritzBox:
                 try:
                     print("Versuche den Schritt zu überspringen.")
                     self.browser.klicken('//*[@id="uiSkip"]', timeout=3, versuche=1)
+                    # es kann auch das element //*[@id="Button1"] sein nur wenn beides fehlschlägt sollte der workflow in der exception getriggert werden
                 except Exception:
                     print("skip hat nicht funktioniert, versuche nun generischen anbieter auszuwählen")
                     try:
@@ -515,12 +516,12 @@ class FritzBox:
         return False
 
     def reset_via_forgot_password(self) -> bool:
-        """Leitet den Werksreset über den 'Passwort vergessen'-Link ein (ohne Login)."""
-        if not self.warte_auf_erreichbarkeit():
-            print("❌ FritzBox nicht erreichbar für Reset.")
-            return False
+        """
+        Führt einen Werksreset über den 'Passwort vergessen' / 'Kennwort vergessen'-Flow aus.
+        Gibt False zurück, wenn der Ablauf nicht durchgeführt werden konnte.
+        Beendet NICHT mehr das Programm, falls der Button nicht verfügbar ist.
+        """
         print("🚨 Werkseinstellungen einleiten (via 'Passwort vergessen')...")
-        self.browser.get_url(self.url)
 
         kandidaten_xpaths = [
             '//*[@id="dialogFoot"]/a',
@@ -532,29 +533,53 @@ class FritzBox:
             '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "kennwort vergessen")]',
         ]
 
+        # Schritt 1: Link/Button finden und klicken
         found_reset_link = False
         for xpath in kandidaten_xpaths:
-            if self.browser.klicken(xpath, timeout=5):
-                print(f"🔁 Reset-Link gefunden und geklickt ({xpath})")
-                found_reset_link = True
-                break
+            try:
+                if self.browser.klicken(xpath, timeout=5, versuche=1):
+                    print(f"🔁 Reset-Link gefunden und geklickt ({xpath})")
+                    found_reset_link = True
+                    break
+            except Exception:
+                continue
+
         if not found_reset_link:
-            print("❌ Kein Reset-Link gefunden.")
+            print("❌ Kein Reset-Link gefunden – Werksreset via Passwort vergessen nicht möglich.")
             return False
 
-        if self.browser.klicken('//*[@id="sendFacReset"]', timeout=5):
-            print("🔁 Reset ausgelöst, warte auf Neustart...")
-            time.sleep(60)
-            self.is_reset = True
-            if self.ist_sprachauswahl():
-                print("✅ FritzBox erfolgreich auf Werkseinstellungen zurückgesetzt und Sprachauswahl erreicht.")
+        # Schritt 2: Auf sendFacReset warten und klicken
+        max_versuche = 3
+        for attempt in range(1, max_versuche + 1):
+            try:
+                btn = self.browser.sicher_warten('//*[@id="sendFacReset"]', timeout=8, sichtbar=True)
+
+                # Versuche normalen Klick
+                try:
+                    btn.click()
+                except Exception:
+                    # Fallback: Scroll + JS-Klick
+                    try:
+                        self.browser.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+                        self.browser.driver.execute_script("arguments[0].click();", btn)
+                        print("✅ sendFacReset via JavaScript-Klick ausgelöst.")
+                    except Exception as e:
+                        print(f"❌ Klick auf sendFacReset fehlgeschlagen: {e}")
+                        continue
+
+                print("🔁 Reset ausgelöst, warte auf Neustart...")
+                time.sleep(50)
                 return True
-            else:
-                print("⚠️ Reset ausgelöst, aber Sprachauswahl nicht verifiziert. Bitte manuell prüfen.")
-                return False
-        else:
-            print("❌ Fehler beim Bestätigen des Resets via 'sendFacReset'.")
-            return False
+
+            except Exception:
+                print(f"⚠️ Element //*[@id='sendFacReset'] nicht gefunden (Versuch {attempt}/{max_versuche})")
+                # Falls Seite hängen geblieben ist, versuche sanftes Reload ohne Cookies zu löschen
+                self.browser.reload(self.url, clear_cookies=False)
+
+        # Schritt 3: Falls der Button gar nicht kommt → nur Info, kein Exit
+        print("⚠️ Reset konnte nicht ausgelöst werden – Button 'sendFacReset' nicht verfügbar. "
+              "Möglicherweise war die Box zu lange an oder ist schon neu gestartet.")
+        return False
 
     @require_login
     def activate_expert_mode_if_needed(self) -> bool:
