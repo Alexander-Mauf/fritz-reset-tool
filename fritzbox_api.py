@@ -515,7 +515,7 @@ class FritzBox:
             pass
         return False
 
-    def reset_via_forgot_password(self) -> bool:
+    def reset_via_forgot_password(self):
         """
         Führt einen Werksreset über den 'Passwort vergessen' / 'Kennwort vergessen'-Flow aus.
         Gibt False zurück, wenn der Ablauf nicht durchgeführt werden konnte.
@@ -579,7 +579,7 @@ class FritzBox:
         # Schritt 3: Falls der Button gar nicht kommt → nur Info, kein Exit
         print("⚠️ Reset konnte nicht ausgelöst werden – Button 'sendFacReset' nicht verfügbar. "
               "Möglicherweise war die Box zu lange an oder ist schon neu gestartet.")
-        return False
+        return None # damit der Workflow nicht hart abbricht, falls nicht gefunden
 
     @require_login
     def activate_expert_mode_if_needed(self) -> bool:
