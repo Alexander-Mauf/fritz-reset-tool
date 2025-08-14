@@ -146,8 +146,11 @@ class WorkflowOrchestrator:
                     if not self._run_step_with_retry(step_name, func, *args):
                         return None
                     self._fenster_in_vordergrund_holen()
-                except RuntimeError("RESTART_NEW_BOX"):
-                    return "restart"
+                except RuntimeError as e:
+                    if str(e) == "RESTART_NEW_BOX":
+                        return "restart"
+                    else:
+                        raise
                 except Exception:
                     raise Exception
 
