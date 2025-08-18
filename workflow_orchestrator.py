@@ -38,6 +38,14 @@ class WorkflowOrchestrator:
         max_attempts = 2
         for attempt in range(max_attempts):
             try:
+                if self.browser is None or self.browser.driver is None:
+                    print("⚠️ Browser-Instanz verloren – starte neu...")
+                    from browser_utils import setup_browser, Browser
+                    self.browser_driver = setup_browser()
+                    self.browser = Browser(self.browser_driver)
+                    self.fritzbox.browser = self.browser
+                    print("✅ Neuer Browser verbunden.")
+
                 result = func(*args, **kwargs)
 
                 # Eine explizite Rückgabe von False durch die Funktion signalisiert einen kontrollierten Fehlschlag.
@@ -53,8 +61,6 @@ class WorkflowOrchestrator:
                         # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
                         break
 
-                # Wenn die Funktion True zurückgab (oder None, was wir als Erfolg interpretieren,
-                # da die Funktion keine explizite False-Rückgabe hatte), ist der Schritt erfolgreich.
                 print("✅ Schritt erfolgreich.")
                 return True
 
@@ -67,6 +73,30 @@ class WorkflowOrchestrator:
                     # Nach allen automatischen Versuchen ist der Schritt fehlgeschlagen.
                     # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
                     break
+
+        # Wenn der fehlgeschlagene Schritt der Login war:
+        if description == "Login durchführen":
+            print("\nLogin ist fehlgeschlagen. Starte Korrektur...")
+            letztes_passwort = self.fritzbox.password  # Das zuletzt versuchte Passwort holen
+
+            while True:
+                neues_passwort = input(
+                    "🔑 Passwort möglicherweise falsch. Bitte erneut eingeben.").strip()
+
+                if neues_passwort == letztes_passwort:
+                    print("⚠️ Das eingegebene Passwort ist identisch zum letzten Versuch.")
+                    print("🚨 Starte Werksreset über 'Passwort vergessen'...")
+                    return self.fritzbox.reset_via_forgot_password()
+                else:
+                    # Der Benutzer hat ein neues Passwort eingegeben, wir versuchen es damit erneut.
+                    print("🔁 Versuche Login mit dem neuen Passwort...")
+                    # Wir rufen die Login-Funktion direkt mit dem neuen Passwort auf
+                    if self.fritzbox.login(neues_passwort):
+                        print("✅ Login mit neuem Passwort war erfolgreich!")
+                        return True
+                    else:
+                        letztes_passwort = neues_passwort
+
 
         # Wenn die Schleife beendet ist (nach max_attempts oder explizitem False),
         # fragen wir den Benutzer, was zu tun ist.
@@ -150,6 +180,22 @@ class WorkflowOrchestrator:
             if not self._run_step_with_retry("Werkseinstellungen über UI",
                                              self.fritzbox.perform_factory_reset_from_ui):
                 return None
+
+            # --- NEU: Finale Zusammenfassung des WLAN-Scans anzeigen ---
+            if self.fritzbox.wlan_scan_results:
+                print("\n\n📡📋 Zusammenfassung des WLAN-Scans 📡📋")
+                for i, network_data in enumerate(self.fritzbox.wlan_scan_results):
+                    # Rufe die existierende Funktion aus dem FritzBox-Objekt auf
+                    # und entpacke die Werte aus dem Dictionary.
+                    self.fritzbox.print_wlan_entry(
+                        index=i,
+                        name=network_data.get("name"),
+                        freq=network_data.get("frequency"),
+                        channel=network_data.get("channel"),
+                        mac=network_data.get("mac"),
+                        signal_title=network_data.get("signal")
+                    )
+                print("--------------------------------------------------")
 
             print("\n🎉 Workflow für diese FritzBox erfolgreich abgeschlossen!")
             while True:

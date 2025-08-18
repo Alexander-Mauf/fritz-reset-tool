@@ -131,6 +131,8 @@ def reset_fritzbox(driver): #without login
         '//*[@id="dialogFoot"]/a',
         '//a[contains(text(), "Passwort vergessen")]',
         '//button[contains(text(), "Passwort vergessen")]',
+        '//a[contains(text(), "Kennwort vergessen")]',
+        '//button[contains(text(), "Kennwort vergessen")]',
     ]
 
     for xpath in kandidaten:
@@ -141,11 +143,18 @@ def reset_fritzbox(driver): #without login
         except:
             continue
     else:
-        raise Exception("❌ Kein Reset-Link gefunden.")
+        print("❌ Kein Reset-Link gefunden.")
+        return False
 
-    klicken(driver, '//*[@id="sendFacReset"]')
-    print("🔁 Reset ausgelöst, warte auf Neustart...")
-    time.sleep(50)
+    try:
+        klicken(driver, '//*[@id="sendFacReset"]')
+        print("🔁 Reset ausgelöst, warte auf Neustart...")
+        time.sleep(50)
+        return True
+
+    except Exception:
+        print("❌ Fehler beim Bestätigen des Resets.")
+        return False
 
 def checkbox_fehlerdaten_dialog(driver):
     print("🛑 Fehlerdaten-Checkbox prüfen...")
@@ -172,10 +181,11 @@ def wlan_antenne_check(driver, max_versuche=2):
     for versuch in range(1, max_versuche + 1):
         try:
             klicken(driver, '//*[@id="wlan"]')
-            time.sleep(1)
             klicken(driver, '//*[@id="chan"]')
-            time.sleep(5)
-
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located(
+                (By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]'))
+            )
             rows = driver.find_elements(By.XPATH, '//div[@class="flexRow" and .//div[@prefid="rssi"]]')
             if rows:
                 print(f"📶 {len(rows)} Netzwerke gefunden. Verarbeite...")
@@ -183,7 +193,7 @@ def wlan_antenne_check(driver, max_versuche=2):
             else:
                 print(f"⚠️ Kein WLAN gefunden (Versuch {versuch}/{max_versuche}).")
         except Exception as e:
-            print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch}): {e}")
+            print(f"❌ Fehler beim Zugriff auf WLAN-Liste (Versuch {versuch})")
             rows = []
 
         if versuch < max_versuche:
@@ -266,9 +276,9 @@ def firmware_version_pruefen_wrapper(driver):
 def erstelle_standard_steps(password, firmware_pfad):
     return [
         ("Login durchführen", lambda d: login(d, password)),
-        ("WLAN-Antennen prüfen", wlan_antenne_check),
         ("Firmware-Version prüfen", firmware_version_pruefen_wrapper),
         ("Firmware-Update oder Reset durchführen", lambda d: tim_update_oder_reset(d, firmware_pfad)),
+        ("WLAN-Antennen prüfen", wlan_antenne_check),
     ]
 
 def get_steps_from_branding(driver, password, firmware_pfad):
@@ -294,7 +304,7 @@ def get_steps_from_branding(driver, password, firmware_pfad):
         return erstelle_standard_steps(password, firmware_pfad)
 
     except Exception as e:
-        print(f"⚠️ Branding-Erkennung fehlgeschlagen: {e}")
+        print(f"⚠️ Branding-Erkennung fehlgeschlagen")
         return erstelle_standard_steps(password, firmware_pfad)
 
 def dsl_setup_init(driver):
@@ -378,9 +388,9 @@ def tim_factory_reset(driver):
                 klicken(driver, xpath)
                 time.sleep(3)
             except Exception as e:
-                print(f"⚠️ Fehler bei Reset-Klick: {xpath} – {e}")
+                print(f"⚠️ Fehler bei Reset-Klick: {xpath}")
     except Exception as e:
-        print(f"❌ Fehler im Reset-Ablauf: {e}")
+        print(f"❌ Fehler im Reset-Ablauf:")
         return
 
     print("⚠️ℹ️⚠️ Bitte jetzt physischen Knopf an der Box drücken...")

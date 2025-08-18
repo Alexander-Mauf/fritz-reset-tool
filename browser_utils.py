@@ -49,7 +49,7 @@ class Browser:
         except Exception as e:
             # Hier keine Fritzbox-spezifische Login-Prüfung, da dies eine generische Browser-Klasse ist.
             # Die Login-Prüfung erfolgt in der FritzBox-Klasse, die diese Browser-Methoden nutzt.
-            raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden): {e}")
+            raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden)")
 
     def klicken(self, xpath, timeout=15, versuche=3, verbose=False):
         """
@@ -64,12 +64,12 @@ class Browser:
                     return True
                 except Exception as e:
                     # Direkter Klick fehlgeschlagen, versuche JavaScript-Klick
-                    print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}) für {xpath}: {e}")
+                    print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}) für {xpath}")
                     self.driver.execute_script("arguments[0].click();", element)
                     return True # JavaScript-Klick war (wahrscheinlich) erfolgreich
             except Exception as e:
                 if verbose:
-                    print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1}): {e}")
+                    print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1})")
                     time.sleep(1) # Kurze Pause vor dem nächsten Versuch
                 else:
                     print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1})")
@@ -84,7 +84,7 @@ class Browser:
             element.send_keys(text)
             return True
         except Exception as e:
-            print(f"❌ Fehler beim Schreiben in {xpath}: {e}")
+            print(f"❌ Fehler beim Schreiben in {xpath}")
             return False
 
     def get_url(self, url):
@@ -93,8 +93,31 @@ class Browser:
             self.driver.get(url)
             return True
         except Exception as e:
-            print(f"❌ Fehler beim Navigieren zu {url}: {e}")
+            print(f"❌ Fehler beim Navigieren zu {url}")
             return False
+
+    def reload(self, url, cache_bust=True, clear_cookies=True):
+        """Erneutes Laden der Seite inkl. einfacher Cache-Umgehung."""
+        try:
+            if self.driver is None:
+                print("❌ Browser-Driver ist None (geschlossen).")
+                return False
+            if clear_cookies:
+                try:
+                    self.driver.delete_all_cookies()
+                except Exception:
+                    pass
+            final = url
+            if cache_bust:
+                ts = int(time.time() * 1000)
+                sep = '&' if ('?' in url) else '?'
+                final = f"{url}{sep}_={ts}"
+            self.driver.get(final)
+            return True
+        except Exception:
+            print("❌ Fehler bei reload()")
+            return False
+
 
     def quit(self):
         """Schließt den Browser."""

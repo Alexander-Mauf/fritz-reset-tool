@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
+from functools import wraps
 import re
 import sys
 from selenium.webdriver.common.by import By
@@ -34,6 +35,21 @@ class FirmwareManager:
                 # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "08.02",
                 "final_file": "FRITZ.Box_7530-08.02.image"
+            },
+            "7490": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "07.60",
+                "final_file": "FRITZ.Box_7490-07.60.image"
+            },
+            "7582": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "07.18",
+                "final_file": "FRITZ.Box_7582-07.18.image"
+            },
+            "6660": {
+                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
+                "final": "08.03",
+                "final_file": "FRITZ.Box_6660_Cable-08.03.image"
             },
             "6890": {
                 # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
@@ -86,6 +102,36 @@ class FirmwareManager:
             print(f"❌ Firmware-Datei nicht gefunden. Bitte manuell auswählen.")
             return self._select_firmware_path_manually()
 
+
+def require_login(func):
+    """
+    Decorator, der sicherstellt, dass vor der Ausführung der Funktion ein Login besteht.
+    Versucht bei Bedarf automatisch einen erneuten Login.
+    """
+
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        # 'self' ist hier die Instanz der FritzBox-Klasse
+        print(f"🕵️  Login-Prüfung für die Funktion '{func.__name__}'...")
+
+        if not self.is_logged_in_and_menu_ready(timeout=2):
+            print("⚠️ Session abgelaufen oder nicht eingeloggt. Versuche automatischen Re-Login...")
+
+            # Die login() Methode verwendet das gespeicherte Passwort (self.password)
+            if self.login(self.password):
+                print("✅ Re-Login war erfolgreich.")
+            else:
+                print(f"❌ Der automatische Re-Login ist fehlgeschlagen. Breche '{func.__name__}' ab.")
+                return False  # Signalisiert den Fehlschlag an den WorkflowOrchestrator
+
+        # Wenn der Login besteht (oder der Re-Login erfolgreich war), führe die eigentliche Funktion aus
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
+
+
 class FritzBox:
     """Repräsentiert eine FritzBox und kapselt ihre Interaktionen."""
 
@@ -101,6 +147,7 @@ class FritzBox:
         self.password = None
         self.box_model = None
         self.is_wifi_checked = False
+        self.wlan_scan_results = []
 
     def warte_auf_erreichbarkeit(self, versuche=20, delay=5) -> bool:
         """Wartet, bis die FritzBox unter einer bekannten IP erreichbar ist."""
@@ -207,9 +254,22 @@ class FritzBox:
         if not self.warte_auf_erreichbarkeit():
             print("❌ FritzBox nicht erreichbar für Login.")
             return False
-
-        self.password = password
+        if password is not None and password != "":
+            self.password = password
+        if self.browser.driver is None:
+            print("⚠️ Browser-Instanz fehlt – starte neue WebDriver-Instanz...")
+        try:
+            from browser_utils import setup_browser, Browser
+            new_driver = setup_browser()
+            self.browser = Browser(new_driver)
+            print("✅ Neuer Browser gestartet.")
+        except Exception as e:
+            print(f"❌ Konnte keine neue Browser-Instanz erstellen: {e}")
+            return False
+        print("Reload der startseite")
+        self.browser.get_url(self.url)
         print("🔐 Login wird versucht...")
+
 
         if not force_reload and self.is_logged_in_and_menu_ready(timeout=3):
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
@@ -228,7 +288,7 @@ class FritzBox:
 
         if self._check_if_login_required():
             try:
-                self.browser.schreiben('//*[@id="uiPass"]', password)
+                self.browser.schreiben('//*[@id="uiPass"]', self.password)
                 self.browser.klicken('//*[@id="submitLoginBtn"]')
             except Exception as e:
                 print(f"❌ Fehler bei der initialen Login-Eingabe:")
@@ -240,11 +300,11 @@ class FritzBox:
         max_dialog_attempts = 15
         print("...starte Abarbeitung aller möglichen Dialoge...")
         dialog_handlers = [
+            self.dsl_setup_init,
             self.handle_registration_dialog,
             self.neue_firmware_dialog,
-            self.dsl_setup_init,
             self.checkbox_fehlerdaten_dialog,
-            self.skip_configuration
+            self.skip_configuration,
         ]
 
         for attempt in range(max_dialog_attempts):
@@ -267,11 +327,8 @@ class FritzBox:
                     action_taken = True
                     break
 
-            # KORREKTUR: Wenn kein spezifischer Handler zugetroffen hat,
-            # wird jetzt die robuste Fallback-Methode aufgerufen.
             if not action_taken:
                 print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
-                # Ruft jetzt die korrekte und robuste Methode auf.
                 self._handle_any_dialog_button()
 
             time.sleep(1.5) # Pause zwischen den Runden
@@ -444,8 +501,11 @@ class FritzBox:
         kandidaten_xpaths = [
             '//*[@id="dialogFoot"]/a',
             '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passwort vergessen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "kennwort vergessen")]',
             '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passwort vergessen")]',
             '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passwort vergessen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "kennwort vergessen")]',
+            '//*[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "kennwort vergessen")]',
         ]
 
         found_reset_link = False
@@ -472,6 +532,7 @@ class FritzBox:
             print("❌ Fehler beim Bestätigen des Resets via 'sendFacReset'.")
             return False
 
+    @require_login
     def activate_expert_mode_if_needed(self) -> bool:
         """
         Prüft, ob der "FRITZ!OS-Datei"-Reiter klickbar ist. Wenn nicht, wird die
@@ -529,20 +590,12 @@ class FritzBox:
             print("✅ Version ist aktuell genug, keine Prüfung der erweiterten Ansicht nötig.")
             return True
 
+    @require_login
     def perform_factory_reset_from_ui(self) -> bool:
         """
         Setzt die FritzBox auf Werkseinstellungen zurück. Verwendet sprachunabhängige
         IDs und eine mehrsprachige Textsuche für maximale Kompatibilität.
         """
-        # --- Automatischer Login-Versuch bei Bedarf ---
-        if not self.is_logged_in_and_menu_ready():
-            print("ℹ️ Nicht eingeloggt. Führe vor dem Reset einen neuen Login durch...")
-            # Die login() Methode nutzt das gespeicherte Passwort
-            if not self.login(self.password):
-                print("❌ Erneuter Login für den Reset-Versuch ist fehlgeschlagen.")
-                return False
-            print("✅ Erneuter Login erfolgreich. Setze Reset-Vorgang fort.")
-
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
@@ -585,19 +638,10 @@ class FritzBox:
             print("⚠️ℹ️⚠️ Schritt 3: Bitte jetzt physischen Knopf an der Box drücken...")
 
             # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
-           # second_ok_xpath = '//*[contains(text(),"OK")]'
-           # btn = self.browser.sicher_warten(second_ok_xpath, timeout=180, sichtbar=True)
-           # btn.click()
-           # print("✅ Schritt 4: Zweiter OK-Button nach physischer Bestätigung geklickt.")
-           # self.is_reset = True
 
-            ok_xpath = '//*[contains(text(),"OK")]'
-            # Ein XPath, der flexibel auf "Wiederholen" oder "Retry" reagiert:
-            retry_xpath = '//*[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
-
-            print("▶️ Starte permanenten Wartezyklus auf den finalen 'OK'-Button...")
-
-            # Eine unendliche Schleife, die nur bei Erfolg durch 'break' verlassen wird.
+            ok_xpath = '//button[contains(text(),"OK")]'
+            retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
+            tries = 0
             while True:
                 try:
                     btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
@@ -614,6 +658,10 @@ class FritzBox:
                     except Exception:
                         print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
                         time.sleep(10)
+                tries +=1
+                if tries >8:
+                    print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
+                    return False
 
         except Exception:
             print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
@@ -634,6 +682,7 @@ class FritzBox:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
+    @require_login
     def get_firmware_version(self) -> str | bool:
         """Ermittelt die aktuelle Firmware-Version der FritzBox."""
         print("ℹ️ Ermittle Firmware-Version...")
@@ -648,9 +697,24 @@ class FritzBox:
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
-            version_elem = self.browser.sicher_warten('//*[@class="fakeTextInput" or contains(@class, "version_text")]',
-                                                      timeout=5)
-            version_text = version_elem.text.strip()
+            primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
+            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'  # Ihr Selector, leicht präzisiert
+
+            version_text = ""
+            try:
+                # 1. Versuche den primären Selector
+                version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
+                version_text = version_elem.text.strip()
+            except Exception:
+                # 2. Wenn er fehlschlägt, versuche den Fallback-Selector
+                print("...primärer Versions-Selector nicht gefunden, versuche Fallback (z.B. für 6490).")
+                version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
+                full_text = version_elem.text.strip()
+
+                # 3. Extrahiere die Versionsnummer (z.B. "07.29") aus dem Text "FRITZ!OS: 07.29"
+                match = re.search(r'(\d{2}\.\d{2})', full_text)
+                if match:
+                    version_text = match.group(1)
 
             if version_text:
                 self.os_version = version_text
@@ -663,8 +727,7 @@ class FritzBox:
             print(f"❌ Fehler beim Ermitteln der Firmware-Version: ")
             return False  # KORREKTUR: Bei Fehler False zurückgeben
 
-        # fritzbox_api.py
-
+    @require_login
     def get_box_model(self) -> str | bool:
         """
         Ermittelt das Fritzbox-Modell mit einer robusten 3-Stufen-Strategie.
@@ -728,6 +791,8 @@ class FritzBox:
             if match:
                 model_number = match.group(1)
                 # Fall für LTE-Modelle
+                if int(model_number) == 6890:
+                    return f"{model_number}_LTE"
                 if "LTE" in text_content:
                     return f"{model_number}_LTE"
                 return model_number
@@ -824,6 +889,7 @@ class FritzBox:
             print(f"❌ Fehler beim Setzen der Sprache auf '{lang_code.upper()}'")
             return False
 
+    @require_login
     def check_wlan_antennas(self, max_versuche=2) -> bool:
         """
         Prüft WLAN-Antennen; erkennt automatisch die UI-Version (modern vs. alt)
@@ -831,8 +897,7 @@ class FritzBox:
         """
         print("📡 WLAN-Antennen prüfen...")
         self._close_any_overlay()
-        if not self.is_logged_in_and_menu_ready():
-            return False
+        self.wlan_scan_results = []  # Liste vor jedem neuen Scan leeren
 
         for versuch in range(1, max_versuche + 1):
             try:
@@ -859,7 +924,14 @@ class FritzBox:
                             mac = row.find_element(By.XPATH, './/div[@prefid="mac"]').text.strip()
                             signal_title = row.find_element(By.XPATH, './/div[@prefid="rssi"]').get_attribute(
                                 "title").strip()
-                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.wlan_scan_results.append({
+                                "name": name,
+                                "frequency": freq,
+                                "channel": channel,
+                                "mac": mac,
+                                "signal": signal_title
+                            })
                         except Exception as e:
                             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
@@ -883,7 +955,14 @@ class FritzBox:
                             freq = cols[2].text.strip() # this is apparently freq in the old Version
                             mac = cols[3].text.strip()
                             channel = cols[4].text.strip() # fragwürdig
-                            self._print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
+                            self.wlan_scan_results.append({
+                                "name": name,
+                                "frequency": freq,
+                                "channel": channel,
+                                "mac": mac,
+                                "signal": signal_title
+                            })
                         except Exception as e:
                             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{i + 1}")
                     self.is_wifi_checked = True
@@ -900,7 +979,7 @@ class FritzBox:
         print("❌ Auch nach mehreren Versuchen keine Netzwerke gefunden.")
         return False
 
-    def _print_wlan_entry(self, index, name, freq, channel, mac, signal_title):
+    def print_wlan_entry(self, index, name, freq, channel, mac, signal_title):
         """Hilfsfunktion zur formatierten Ausgabe eines WLAN-Eintrags."""
         try:
             signal_val = signal_title.replace('%', '').replace('<', '')
@@ -917,11 +996,9 @@ class FritzBox:
         except Exception as e:
             print(f"⚠️ Fehler beim Verarbeiten von Netzwerk #{index + 1}:")
 
+    @require_login
     def perform_firmware_update(self, firmware_path: str) -> bool:
         """Führt ein Firmware-Update durch und stellt vorher einen sauberen UI-Zustand her."""
-        if not self.is_logged_in_and_menu_ready():
-            print("❌ Nicht eingeloggt. Login für Firmware-Update erforderlich.")
-            return False
         if not firmware_path or not os.path.exists(firmware_path):
             print(f"❌ Firmware-Datei nicht gefunden unter: {firmware_path}")
             return False
@@ -929,7 +1006,6 @@ class FritzBox:
         print(f"🆙 Firmware-Update wird mit Datei gestartet: {os.path.basename(firmware_path)}")
 
         try:
-            # NEU: Zur Sicherheit zur Hauptseite navigieren, um einen definierten Startpunkt zu haben.
             print("...navigiere zur Hauptseite für einen sauberen Start.")
             self.browser.klicken('//*[@id="mHome"] | //*[@id="overview"]')
             time.sleep(1)
@@ -943,7 +1019,6 @@ class FritzBox:
                                         timeout=5): return False
             time.sleep(1)
 
-            # ... (der Rest der Methode bleibt gleich) ...
             print("...warte auf die Seite für das Date-Update.")
             try:
                 checkbox = self.browser.sicher_warten('//*[@id="uiExportCheck"]', timeout=10)
