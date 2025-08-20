@@ -1121,7 +1121,7 @@ class FritzBox:
             print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
             # --- NEU: Aktiv auf die Box warten ---
             # Wir geben ihr großzügig Zeit (40 Versuche * 10s = 400s)
-            time.sleep(50)
+            time.sleep(60)
             if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
                 # this needs login check for
                 print("✅ Box ist nach dem Update wieder erreichbar.")
