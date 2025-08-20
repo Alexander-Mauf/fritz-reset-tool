@@ -190,17 +190,19 @@ class FritzBox:
         try:
             # Hier keinen get_url aufruf! wird vor dem aufruf im login gemacht
             # Prüfe, ob Sprachauswahl-Elemente da sind
-            if self.browser.sicher_warten('//*[@id="uiLanguage-en"]', timeout=2, sichtbar=False):
-                print("🌐 Sprachauswahl erkannt. Setze auf Englisch...")
-                if self.browser.klicken('//*[@id="uiLanguage-en"]'):
+            if self.browser.sicher_warten('//*[@id="uiLanguage-de"]', timeout=2, sichtbar=False):
+                print("🌐 Sprachauswahl erkannt. Setze auf Deutsch...")
+                if self.browser.klicken('//*[@id="uiLanguage-de"]'):
                     if self.browser.klicken('//*[@id="submitLangBtn"]'):
                         time.sleep(3)
-                        self.language = "en"
+                        self.language = "de"
                         return True
                     print("⚠️ 'Sprache übernehmen'-Button nicht klickbar.")
                 print("⚠️ Sprachauswahl-Button nicht klickbar.")
+            else:
+                print("ℹ️ Keine Sprachauswahl erkannt.")
         except Exception:
-            print("ℹ️ Keine Sprachauswahl erkannt oder konnte nicht verarbeitet werden.")
+            print("⚠️ Sprachauswahl konnte nicht verarbeitet werden.")
         return False
 
     def is_main_menu_loaded_and_ready(self, timeout=5) -> bool:
@@ -276,11 +278,11 @@ class FritzBox:
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
-        if self._handle_language_selection():
-            self.browser.get_url(self.url)
+
 
         while True:
             self.browser.get_url(self.url)
+            self._handle_language_selection()
             try:
                 self.browser.sicher_warten('//*[@id="uiPass"]')
                 break
