@@ -26,7 +26,7 @@ class FirmwareManager:
                 "bridge": "07.59",
                 "final": "08.03",
                 "bridge_file": "FRITZ.Box_7590-07.59.image",
-                "final_file": "FRITZ.Box_7590-08.03.image"
+                "final_file": "FRITZ.Box_7590-08.20.image"
             },
             "7590_AX": {
                 "final": "08.02",
