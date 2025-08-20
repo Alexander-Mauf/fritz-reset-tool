@@ -20,12 +20,18 @@ class WorkflowOrchestrator:
 
     def ensure_browser(self):
         if self.browser is None or not self.browser_still_alive():
+            # alten Browser sauber schließen, falls noch offen
+            try:
+                if self.browser:
+                    self.browser.quit()
+            except Exception:
+                pass
+
             self.browser_driver = setup_browser()
             self.browser = Browser(self.browser_driver)
-            if not self.fritzbox:
-                self.fritzbox = FritzBox(self.browser)
-            else:
-                self.fritzbox.browser = self.browser
+
+            # FritzBox-Objekt immer neu erstellen
+            self.fritzbox = FritzBox(self.browser)
 
     def browser_still_alive(self):
         try:
@@ -132,6 +138,7 @@ class WorkflowOrchestrator:
 
     def run_full_workflow(self, password: str) -> str | None:
         """Führt den gesamten FritzBox-Verwaltungs-Workflow anhand einer flexiblen Schritt-Liste aus."""
+        self.ensure_browser()
 
         try:
             workflow_steps = [
