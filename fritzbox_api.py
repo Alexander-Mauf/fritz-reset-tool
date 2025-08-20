@@ -273,10 +273,27 @@ class FritzBox:
             return True
 
         # gelegentlich gibt es boxen, die keine PW nach reset haben, sondern mal muss es selbst vergeben
+        # zuerst kommt Bitte drücken Sie kurz eine beliebige Taste an Ihrer FRITZ!Box, um sich anzumelden.
+        # --- NEU: Prüfen auf "Bitte Taste drücken"-Dialog ---
+        try:
+            text_xpath = '//div[@class="dialog_content"]//p[contains(text(),"Bitte drücken Sie kurz eine beliebige Taste")]'
+            self.browser.sicher_warten(text_xpath, timeout=5)
+            print("⚠️ℹ️⚠️ FritzBox verlangt physischen Tastendruck zur Anmeldung.")
+            print("👉 Bitte jetzt Taste an der Box drücken...")
+            tries = 0
+
+        except Exception:
+            print("Kein physischer Tastendruck-Dialog gefunden. Fahre normal fort...")
+
         try:
             self.browser.sicher_warten('//*[@id="uiPass-input"]')
-            self.browser.schreiben('//*[@id="uiPass"]', self.password)
+            self.browser.schreiben('//*[@id="uiPass-input"]', self.password)
             self.browser.klicken('//*[@id="submitLoginBtn"]')
+            self.browser.klicken('//*[@id="submit"]')
+            btn = self.browser.sicher_warten('//button[contains(text(),"OK")]', timeout=180, sichtbar=True)
+            time.sleep(1)
+            btn.click()
+            print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
             print(f"Es wurde ein Passwort gesetzt: {self.password}")
             self.browser.reload(self.url)
         except:
