@@ -278,8 +278,6 @@ class FritzBox:
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
-
-
         while True:
             self.browser.get_url(self.url)
             self._handle_language_selection()
