@@ -1,4 +1,3 @@
-# fritzbox_api.py
 import time
 import requests
 import os
@@ -18,8 +17,6 @@ from browser_utils import Browser
 FRITZ_DEFAULT_URL = "http://fritz.box"
 
 
-# fritzbox_api.py
-
 class FirmwareManager:
     """Verwaltet Firmware-Dateien und deren Pfade für mehrstufige Updates."""
 
@@ -28,39 +25,36 @@ class FirmwareManager:
             "7590": {
                 "bridge": "07.59",
                 "final": "08.03",
-                "bridge_file": "FRITZ.Box_7590-07.59.image", # Beispielhafter Dateiname
+                "bridge_file": "FRITZ.Box_7590-07.59.image",
                 "final_file": "FRITZ.Box_7590-08.03.image"
             },
+            "7590_AX": {
+                "final": "08.02",
+                "final_file": "FRITZ.Box_7590-AX-08.02.image"
+            },
             "7530": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "08.02",
                 "final_file": "FRITZ.Box_7530-08.02.image"
             },
             "7490": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.60",
                 "final_file": "FRITZ.Box_7490-07.60.image"
             },
             "7582": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.18",
                 "final_file": "FRITZ.Box_7582-07.18.image"
             },
             "6660": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "08.03",
                 "final_file": "FRITZ.Box_6660_Cable-08.03.image"
             },
             "6890": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.57",
                 "final_file": "FRITZ.Box_6890_LTE-07.57.image"
             }
-            # Weitere Modelle hier hinzufügen
         }
 
     def _select_firmware_path_manually(self):
-        # ... (diese Methode bleibt unverändert)
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename(
