@@ -278,6 +278,16 @@ class FritzBox:
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
+        # gelegentlich gibt es boxen, die keine PW nach reset haben, sondern mal muss es selbst vergeben
+        try:
+            self.browser.sicher_warten('//*[@id="uiPass-input"]')
+            self.browser.schreiben('//*[@id="uiPass"]', self.password)
+            self.browser.klicken('//*[@id="submitLoginBtn"]')
+            print(f"Es wurde ein Passwort gesetzt: {self.password}")
+            self.browser.reload(self.url)
+        except:
+            print("Box hat ein existentes Passwort.")
+
         while True:
             self.browser.get_url(self.url)
             self._handle_language_selection()
