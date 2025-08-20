@@ -942,7 +942,7 @@ class FritzBox:
                 time.sleep(1)
                 if not self.browser.klicken('//*[@id="chan"]', timeout=5): raise Exception(
                     "Konnte 'Funkkanal' nicht klicken.")
-                time.sleep(5)
+                time.sleep(15)
 
                 # --- Logik für MODERNE UI (div-basiert) ---
                 try:
