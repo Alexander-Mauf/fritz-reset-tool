@@ -288,11 +288,8 @@ class FritzBox:
         try:
             self.browser.sicher_warten('//*[@id="uiPass-input"]')
             self.browser.schreiben('//*[@id="uiPass-input"]', self.password)
-            self.browser.klicken('//*[@id="submitLoginBtn"]')
-            self.browser.klicken('//*[@id="submit"]')
-            btn = self.browser.sicher_warten('//button[contains(text(),"OK")]', timeout=180, sichtbar=True)
-            time.sleep(1)
-            btn.click()
+            self.browser.klicken('//button[contains(text(),"OK")]')
+            self.browser.klicken('//*[@id="uiApply"]')
             print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
             print(f"Es wurde ein Passwort gesetzt: {self.password}")
             self.browser.reload(self.url)
