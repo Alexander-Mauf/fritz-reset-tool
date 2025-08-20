@@ -373,6 +373,12 @@ class FritzBox:
             '//*[@id="uiForward"]',
             '//button[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
             '//a[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
+            '//button[contains(translate(text(), "WEITER", "weiter"), "fortschritt anzeigen")]',
+            '//a[contains(translate(text(), "WEITER", "weiter"), "fortschritt anzeigen")]',
+            '//button[contains(translate(text(), "WEITER", "weiter"), "schritt überspringen")]',
+            '//a[contains(translate(text(), "WEITER", "weiter"), "schritt überspringen")]',
+            '//button[contains(translate(text(), "WEITER", "weiter"), "schritt abschließen")]',
+            '//a[contains(translate(text(), "WEITER", "weiter"), "schritt abschließen")]',
             '//button[contains(translate(text(), "OK", "ok"), "ok")]',
             '//a[contains(translate(text(), "OK", "ok"), "ok")]',
             '//button[contains(translate(text(), "ÜBERNEHMEN", "übernehmen"), "übernehmen")]',
@@ -946,12 +952,19 @@ class FritzBox:
                     "Konnte 'Funkkanal' nicht klicken.")
                 time.sleep(15)
 
-                # --- Logik für MODERNE UI (div-basiert) ---
+
                 try:
                     self.browser.klicken('//button[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
                 except Exception as e:
                     print(e)
                     pass
+                try:
+                    self.browser.klicken('//a[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
+                except Exception as e:
+                    print(e)
+                    pass
+
+                # --- Logik für MODERNE UI (div-basiert) ---
 
                 modern_row_xpath = '//div[@class="flexRow" and .//div[@prefid="rssi"]]'
                 num_modern_rows = len(self.browser.driver.find_elements(By.XPATH, modern_row_xpath))
