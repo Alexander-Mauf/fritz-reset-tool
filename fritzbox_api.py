@@ -808,6 +808,42 @@ class FritzBox:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
+    def get_firmware_version_js3(self, timeout=5):
+        """
+        Versucht, die Firmware-Version zuverlässig aus dem dynamischen JS3-DOM auszulesen.
+        Shadow DOMs werden berücksichtigt.
+        """
+        end_time = time.time() + timeout
+        version_text = ""
+
+        while time.time() < end_time:
+            try:
+                # JavaScript: rekursiv nach Input mit name="fritzOsVersion" suchen
+                js_code = """
+                function findInput(root) {
+                    if (!root) return null;
+                    if (root.shadowRoot) root = root.shadowRoot;
+                    let input = root.querySelector('input[name="fritzOsVersion"]');
+                    if (input) return input.value;
+                    for (let child of root.children) {
+                        let v = findInput(child);
+                        if (v) return v;
+                    }
+                    return null;
+                }
+                return findInput(document.querySelector('#js3ContentBox'));
+                """
+                version_text = self.browser.driver.execute_script(js_code)
+                if version_text:
+                    print(f"✅ Firmware-Version gefunden: {version_text}")
+                    return version_text
+            except Exception as e:
+                pass
+            time.sleep(0.2)  # kurz warten und erneut versuchen
+
+        print("❌ JS-Fallback konnte keine Firmware-Version finden.")
+        return ""
+
     @require_login
     def get_firmware_version(self) -> str | bool:
         """Ermittelt die aktuelle Firmware-Version der FritzBox, inkl. JS3-Input für 08.20+."""
@@ -828,28 +864,11 @@ class FritzBox:
 
             # --- Neuer JS3-Input Ansatz (z.B. 08.20) ---
             try:
-                # Warte, bis das Input-Feld sichtbar ist
-                input_elem = self.browser.sicher_warten('//input[@name="fritzOsVersion"]', timeout=5, verbose=True)
-                # DAS HIER MUSS ALTERNATIV MIT JS VERSUCHT WERDEN!
-                # Wert aus dem 'value'-Attribut auslesen
-                version_text = input_elem.get_attribute("value")
+                version_text = self.get_firmware_version_js3()
 
-                if version_text:
-                    print(f"✅ Firmware-Version gefunden: {version_text}")
-            except Exception:
-                try:
-                    # --- JS-Fallback: direktes Abfragen des value im DOM ---
-                    js_code = """
-                        let input = document.querySelector('input[name="fritzOsVersion"]');
-                        return input ? input.value : '';
-                        """
-                    version_text = self.browser.driver.execute_script(js_code)
-                    if version_text:
-                        print(f"✅ Firmware-Version gefunden (JS-Fallback): {version_text}")
-                    else:
-                        print("❌ JS-Fallback konnte keine Firmware-Version finden.")
-                except Exception as e:
-                    print(f"❌ JS-Fallback Fehler: {e}")
+            except Exception as e:
+                print(f"❌ JS-Fallback Fehler: {e}")
+                version_text = ""
 
             # --- Klassische Fallbacks ---
             if not version_text:
