@@ -701,60 +701,49 @@ class FritzBox:
             return False
 
     def _factory_reset_js3(self) -> bool:
-        """Neuer Workflow mit Tile + Dialog (robust für Shadow DOM / JS3)."""
+        """Robuster Factory-Reset für JS3-Oberflächen (Shadow DOM + Fallback XPath)."""
+
+        def _click_with_fallback(selectors: list[str]) -> bool:
+            """Versucht nacheinander JS-QuerySelector und XPath-Fallbacks."""
+            for sel in selectors:
+                try:
+                    if sel.startswith('#'):
+                        # Shadow DOM Handling
+                        script = f"""
+                        let root = document.querySelector('#js3ContentBox');
+                        while(root && root.shadowRoot) {{
+                            root = root.shadowRoot;
+                        }}
+                        let el = root.querySelector('{sel}');
+                        if(el) el.click();
+                        """
+                        self.browser.driver.execute_script(script)
+                        print(f"✅ JS3 Workflow: Element geklickt via querySelector: {sel}")
+                        return True
+                    else:
+                        if self.browser.klicken(sel, timeout=5, versuche=1):
+                            print(f"✅ JS3 Workflow: Element geklickt via XPath: {sel}")
+                            return True
+                except Exception:
+                    continue
+            return False
+
         try:
             # --- Schritt 1: Tile klicken ---
-            clicked = False
             tile_selectors = [
-                '#js3ContentBox js3-view article div:nth-child(2) js3-tile a',  # Shadow DOM Pfad
-                '//a[contains(text(),"Werkseinstellungen laden")]'  # Fallback XPath
+                '#js3-view article div:nth-child(2) js3-tile a',  # Shadow DOM Pfad
+                '//a[contains(text(),"Werkseinstellungen laden")]'  # XPath Fallback
             ]
-            for sel in tile_selectors:
-                try:
-                    # Versuche erst JS-Clique über querySelector
-                    if sel.startswith('#'):
-                        self.browser.driver.execute_script(
-                            f"document.querySelector('{sel}').click()"
-                        )
-                        clicked = True
-                        print(f"✅ JS3 Workflow: Tile geklickt via querySelector: {sel}")
-                        break
-                    else:
-                        # Klassischer XPath-Fallback
-                        clicked = self.browser.klicken(sel, timeout=5, versuche=1)
-                        if clicked:
-                            print(f"✅ JS3 Workflow: Tile geklickt via XPath: {sel}")
-                            break
-                except Exception:
-                    continue
-            if not clicked:
+            if not _click_with_fallback(tile_selectors):
                 print("❌ JS3 Workflow: Konnte Tile nicht finden.")
                 return False
-            time.sleep(1)
 
             # --- Schritt 2: Dialog-Knopf klicken ---
-            clicked = False
             dialog_selectors = [
-                '#js3ContentBox js3-dialog js3-button:nth-child(1) button',  # Shadow DOM Pfad
-                '//button[contains(text(),"Werkseinstellungen laden")]',  # Fallback XPath
+                'js3-dialog js3-button:nth-child(1) button',  # Shadow DOM Pfad
+                '//button[contains(text(),"Werkseinstellungen laden")]'  # XPath Fallback
             ]
-            for sel in dialog_selectors:
-                try:
-                    if sel.startswith('#'):
-                        self.browser.driver.execute_script(
-                            f"document.querySelector('{sel}').click()"
-                        )
-                        clicked = True
-                        print(f"✅ JS3 Workflow: Dialog-Knopf geklickt via querySelector: {sel}")
-                        break
-                    else:
-                        clicked = self.browser.klicken(sel, timeout=5, versuche=1)
-                        if clicked:
-                            print(f"✅ JS3 Workflow: Dialog-Knopf geklickt via XPath: {sel}")
-                            break
-                except Exception:
-                    continue
-            if not clicked:
+            if not _click_with_fallback(dialog_selectors):
                 print("❌ JS3 Workflow: Dialog-Knopf nicht gefunden.")
                 return False
 
