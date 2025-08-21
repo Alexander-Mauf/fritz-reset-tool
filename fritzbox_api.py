@@ -828,14 +828,12 @@ class FritzBox:
 
             # --- Neuer JS3-Input Ansatz (z.B. 08.20) ---
             try:
-                js3_input = self.browser.driver.execute_script(
-                    "return document.querySelector('input[name=\"fritzOsVersion\"]')"
-                )
-                if js3_input:
-                    version_text = js3_input.get_attribute("value").strip()
-                    print(f"✅ JS3 Input Firmware-Version gefunden: {version_text}")
+                # JS3-Input Feld abwarten (robust)
+                js3_input_elem = self.browser.sicher_warten('//input[@name="fritzOsVersion"]', timeout=5)
+                version_text = js3_input_elem.get_attribute("value").strip()
+                print(f"✅ JS3 Input Firmware-Version gefunden: {version_text}")
             except Exception:
-                pass
+                version_text = ""
 
             # --- Klassische Fallbacks ---
             if not version_text:
