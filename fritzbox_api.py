@@ -351,7 +351,6 @@ class FritzBox:
                 print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
                 self._handle_any_dialog_button()
 
-            time.sleep(1.5) # Pause zwischen den Runden
 
         print("❌ Login-Vorgang abgebrochen: Nach mehreren Versuchen konnte das Hauptmenü nicht erreicht werden.")
         self.is_logged_in = False
@@ -391,8 +390,8 @@ class FritzBox:
             '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
             '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
             '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
-            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt überspringen")]',
-            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt überspringen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ", "abcdefghijklmnopqrstuvwxyzäöü"), "schritt überspringen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ", "abcdefghijklmnopqrstuvwxyzäöü"), "schritt überspringen")]',
             '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
             '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
             '//button[contains(translate(text(), "OK", "ok"), "ok")]',
@@ -667,6 +666,8 @@ class FritzBox:
 
             self.browser.klicken('//*[@id="default"]')
             time.sleep(1)
+
+
             # Klick auf den Tab "Werkseinstellungen" (sprachunabhängig via ID)
             confirm_button_xpaths = [
                 '//*[@id="uiDefaults"]',  # Idealfall: Der Button hat eine feste ID
