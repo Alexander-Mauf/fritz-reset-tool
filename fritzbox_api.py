@@ -13,7 +13,6 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from browser_utils import Browser
 
-
 FRITZ_DEFAULT_URL = "http://fritz.box"
 
 
@@ -73,7 +72,7 @@ class FirmwareManager:
             return self._select_firmware_path_manually()
 
         model_files = self.firmware_mapping[box_model]
-        file_key = f"{version_type}_file" # z.B. "bridge_file" oder "final_file"
+        file_key = f"{version_type}_file"  # z.B. "bridge_file" oder "final_file"
 
         if file_key not in model_files:
             print(f"⚠️ Kein '{version_type}'-Update für Modell {box_model} definiert. Manuelle Auswahl.")
@@ -122,8 +121,6 @@ def require_login(func):
         return func(self, *args, **kwargs)
 
     return wrapper
-
-
 
 
 class FritzBox:
@@ -213,7 +210,9 @@ class FritzBox:
         # print(f"🔍 Prüfe auf geladenes und klickbares Hauptmenü (Timeout: {timeout}s)...")
         for xpath in menu_xpaths:
             try:
-                element = self.browser.sicher_warten(xpath, timeout=timeout/len(menu_xpaths) if menu_xpaths else timeout, sichtbar=True)
+                element = self.browser.sicher_warten(xpath,
+                                                     timeout=timeout / len(menu_xpaths) if menu_xpaths else timeout,
+                                                     sichtbar=True)
                 if element and element.is_displayed() and element.is_enabled():
                     # print(f"✅ Hauptmenü-Element '{xpath}' gefunden und bereit.")
                     return True
@@ -267,36 +266,35 @@ class FritzBox:
         self.browser.reload(self.url)
         print("🔐 Login wird versucht...")
 
-
         if not force_reload and self.is_logged_in_and_menu_ready(timeout=3):
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
-        # gelegentlich gibt es boxen, die keine PW nach reset haben, sondern mal muss es selbst vergeben
-        # zuerst kommt Bitte drücken Sie kurz eine beliebige Taste an Ihrer FRITZ!Box, um sich anzumelden.
-        # --- NEU: Prüfen auf "Bitte Taste drücken"-Dialog ---
-        try:
-            text_xpath = '//div[@class="dialog_content"]//p[contains(text(),"Bitte drücken Sie kurz eine beliebige Taste")]'
-            self.browser.sicher_warten(text_xpath, timeout=5)
-            print("⚠️ℹ️⚠️ FritzBox verlangt physischen Tastendruck zur Anmeldung.")
-            print("👉 Bitte jetzt Taste an der Box drücken...")
-            tries = 0
-
-        except Exception:
-            print("Kein physischer Tastendruck-Dialog gefunden. Fahre normal fort...")
-
-        try:
-            self.browser.sicher_warten('//*[@id="uiPass-input"]')
-            self.browser.schreiben('//*[@id="uiPass-input"]', self.password)
-            self.browser.klicken('//button[contains(text(),"OK")]')
-            self.browser.klicken('//*[@id="uiApply"]')
-            print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
-            print(f"Es wurde ein Passwort gesetzt: {self.password}")
-            self.browser.reload(self.url)
-        except:
-            print("Box hat ein existentes Passwort.")
-
         while True:
+            # gelegentlich gibt es boxen, die keine PW nach reset haben, sondern mal muss es selbst vergeben
+            # zuerst kommt Bitte drücken Sie kurz eine beliebige Taste an Ihrer FRITZ!Box, um sich anzumelden.
+            # --- NEU: Prüfen auf "Bitte Taste drücken"-Dialog ---
+            try:
+                text_xpath = '//div[@class="dialog_content"]//p[contains(text(),"Bitte drücken Sie kurz eine beliebige Taste")]'
+                self.browser.sicher_warten(text_xpath, timeout=5)
+                print("⚠️ℹ️⚠️ FritzBox verlangt physischen Tastendruck zur Anmeldung.")
+                print("👉 Bitte jetzt Taste an der Box drücken...")
+                tries = 0
+
+            except Exception:
+                print("Kein physischer Tastendruck-Dialog gefunden. Fahre normal fort...")
+
+            try:
+                self.browser.sicher_warten('//*[@id="uiPass-input"]')
+                self.browser.schreiben('//*[@id="uiPass-input"]', self.password)
+                self.browser.klicken('//button[contains(text(),"OK")]')
+                self.browser.klicken('//*[@id="uiApply"]')
+                print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
+                print(f"Es wurde ein Passwort gesetzt: {self.password}")
+                self.browser.reload(self.url)
+            except:
+                print("Box hat ein existentes Passwort.")
+
             self.browser.get_url(self.url)
             self._handle_language_selection()
             try:
@@ -351,30 +349,29 @@ class FritzBox:
                 print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
                 self._handle_any_dialog_button()
 
-
         print("❌ Login-Vorgang abgebrochen: Nach mehreren Versuchen konnte das Hauptmenü nicht erreicht werden.")
         self.is_logged_in = False
         return False
 
-
     def continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
         try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
+            btn = self.browser.sicher_warten(
+                '//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
             btn.click()
             print("Clicking the Einrichtung jetzt beenden Button.")
         except:
             return False
 
         try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
+            btn = self.browser.sicher_warten(
+                '//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
             btn.click()
             print("Clicking the Einrichtung abschließen Button.")
         except:
             return False
 
         return True
-
 
     def _handle_any_dialog_button(self) -> bool:
         """
@@ -413,19 +410,21 @@ class FritzBox:
         """Behandelt den Dialog 'Neue Firmware wurde installiert'."""
         try:
             # Suchen nach einem eindeutigen Text oder Button dieses Dialogs
-            if self.browser.sicher_warten('//h1[contains(text(), "FRITZ!OS wurde aktualisiert")]', timeout=1, sichtbar=False):
+            if self.browser.sicher_warten('//h1[contains(text(), "FRITZ!OS wurde aktualisiert")]', timeout=1,
+                                          sichtbar=False):
                 print("...behandle 'Firmware aktualisiert'-Dialog.")
                 # Klickt auf OK oder Weiter
-                self.browser.klicken('//button[contains(text(), "OK")] | //a[contains(text(), "Weiter")]', timeout=3, versuche=1)
+                self.browser.klicken('//button[contains(text(), "OK")] | //a[contains(text(), "Weiter")]', timeout=3,
+                                     versuche=1)
                 return True
         except Exception:
-            pass # Element nicht gefunden, also war dieser Dialog nicht da.
+            pass  # Element nicht gefunden, also war dieser Dialog nicht da.
         return False
 
     def dsl_setup_init(self) -> bool:
         """Behandelt den initialen DSL-Einrichtungs-Assistenten."""
         try:
-             # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
+            # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
             if self.browser.sicher_warten('//*[@id="uiForward"]', timeout=1, sichtbar=False):
                 print("...behandle initialen DSL-Setup-Dialog.")
                 try:
@@ -503,7 +502,7 @@ class FritzBox:
     def skip_configuration(self) -> bool:
         """Behandelt generische Konfigurations-Dialoge mit einem "Schließen" oder "OK" Button."""
         try:
-             # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
+            # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
             if self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False):
                 print("...überspringe generischen Konfigurations-Dialog.")
                 btn = self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False)
@@ -586,7 +585,7 @@ class FritzBox:
         # Schritt 3: Falls der Button gar nicht kommt → nur Info, kein Exit
         print("⚠️ Reset konnte nicht ausgelöst werden – Button 'sendFacReset' nicht verfügbar. "
               "Möglicherweise war die Box zu lange an oder ist schon neu gestartet.")
-        return None # damit der Workflow nicht hart abbricht, falls nicht gefunden
+        return None  # damit der Workflow nicht hart abbricht, falls nicht gefunden
 
     @require_login
     def activate_expert_mode_if_needed(self) -> bool:
@@ -702,52 +701,58 @@ class FritzBox:
 
     def _factory_reset_js3(self) -> bool:
         """Robuster Factory-Reset für JS3-Oberflächen (Shadow DOM + Fallback XPath)."""
-
-        def _click_with_fallback(selectors: list[str]) -> bool:
-            """Versucht nacheinander JS-QuerySelector und XPath-Fallbacks."""
-            for sel in selectors:
-                try:
-                    if sel.startswith('#'):
-                        # Shadow DOM Handling
-                        script = f"""
-                        let root = document.querySelector('#js3ContentBox');
-                        while(root && root.shadowRoot) {{
-                            root = root.shadowRoot;
-                        }}
-                        let el = root.querySelector('{sel}');
-                        if(el) el.click();
-                        """
-                        self.browser.driver.execute_script(script)
-                        print(f"✅ JS3 Workflow: Element geklickt via querySelector: {sel}")
-                        return True
-                    else:
-                        if self.browser.klicken(sel, timeout=5, versuche=1):
-                            print(f"✅ JS3 Workflow: Element geklickt via XPath: {sel}")
-                            return True
-                except Exception:
-                    continue
-            return False
-
         try:
             # --- Schritt 1: Tile klicken ---
-            tile_selectors = [
-                '#js3-view article div:nth-child(2) js3-tile a',  # Shadow DOM Pfad
-                '//a[contains(text(),"Werkseinstellungen laden")]'  # XPath Fallback
-            ]
-            if not _click_with_fallback(tile_selectors):
-                print("❌ JS3 Workflow: Konnte Tile nicht finden.")
+            tile_selector = 'js3-tile--info a.js3-tile__container'
+            tile_clicked = self.browser.driver.execute_script("""
+            const contentBox = document.querySelector('#js3ContentBox');
+            const shadow1 = contentBox.shadowRoot;
+            
+            const js3view = shadow1.querySelector('.js3-view');
+            const shadow2 = js3view.shadowRoot;
+            
+            shadow2.querySelector('js3-tile[ta-id="ag6vu9"]').click(); //@todo more robust selector
+            
+            const js3modal = shadow1.querySelector('js3-dialog').querySelector('dialog').querySelector('div');
+            const shadow3 = js3modal.querySelector('js3-view').shadowRoot;
+            
+            time.sleep(3);
+            shadow3.querySelector('js3-button[level="critical"]').click();
+            """)
+
+            ## HIER MUSS DER PHYSISCHE KNOPF GEDRÜCKT WERDEN
+            while not self._wait_for_physical_button():
+                pass
+
+            tile_clicked = self.browser.driver.execute_script("""
+            shadow1.querySelector('js3-button[aria-label="OK"]').click();
+            //shadow3.querySelector('js3-button[level="critical"]').click();
+            """)
+            if tile_clicked:
+                print(f"✅ JS3 Workflow: Tile geklickt via querySelector: {tile_selector}")
+            else:
+                print("❌ Tile konnte nicht geklickt werden.")
                 return False
 
-            # --- Schritt 2: Dialog-Knopf klicken ---
-            dialog_selectors = [
-                'js3-dialog js3-button:nth-child(1) button',  # Shadow DOM Pfad
-                '//button[contains(text(),"Werkseinstellungen laden")]'  # XPath Fallback
-            ]
-            if not _click_with_fallback(dialog_selectors):
-                print("❌ JS3 Workflow: Dialog-Knopf nicht gefunden.")
+            # --- Schritt 2: Warten auf Dialog (dynamisch erzeugt) ---
+            dialog_selector = 'js3-dialog js3-button button'
+            for _ in range(10):  # max 10x warten, je 0.5s
+                dialog_elem = self.browser.driver.execute_script(
+                    f"return document.querySelector('{dialog_selector}')"
+                )
+                if dialog_elem:
+                    print("✅ JS3 Workflow: Dialog gefunden.")
+                    break
+                time.sleep(0.5)
+            else:
+                print("❌ JS3 Workflow: Dialog-Knopf wurde nicht gefunden.")
                 return False
 
-            # --- Schritt 3: Warten auf physischen Knopf ---
+            # --- Schritt 3: Dialog-Knopf klicken ---
+            self.browser.driver.execute_script(f"document.querySelector('{dialog_selector}').click();")
+            print("✅ JS3 Workflow: Dialog-Knopf geklickt.")
+
+            # --- Schritt 4: Warten auf physischen Knopf ---
             return self._wait_for_physical_button()
 
         except Exception as e:
@@ -934,7 +939,6 @@ class FritzBox:
                 except Exception:
                     continue
 
-
         print("❌ Box-Modell konnte nicht identifiziert werden.")
         self.box_model = "UNKNOWN"
         return False  # KORREKTUR: Bei Fehlschlag False zurückgeben, nicht None.
@@ -995,7 +999,7 @@ class FritzBox:
                             found_and_clicked_any = True
                             time.sleep(2)
                     except Exception:
-                        pass # Element nicht gefunden oder Klick fehlgeschlagen, Wizard ist wohl durch
+                        pass  # Element nicht gefunden oder Klick fehlgeschlagen, Wizard ist wohl durch
 
                 if found_and_clicked_any:
                     return True
@@ -1071,7 +1075,6 @@ class FritzBox:
                     "Konnte 'Funkkanal' nicht klicken.")
                 time.sleep(15)
 
-
                 try:
                     self.browser.klicken('//button[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
                 except Exception as e:
@@ -1128,9 +1131,9 @@ class FritzBox:
 
                             signal_title = cols[0].get_attribute("title").strip()
                             name = cols[1].text.strip()
-                            freq = cols[2].text.strip() # this is apparently freq in the old Version
+                            freq = cols[2].text.strip()  # this is apparently freq in the old Version
                             mac = cols[3].text.strip()
-                            channel = cols[4].text.strip() # fragwürdig
+                            channel = cols[4].text.strip()  # fragwürdig
                             self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
                             self.wlan_scan_results.append({
                                 "name": name,
