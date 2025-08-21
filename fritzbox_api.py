@@ -24,7 +24,7 @@ class FirmwareManager:
         self.firmware_mapping = {
             "7590": {
                 "bridge": "07.59",
-                "final": "08.03",
+                "final": "08.20",
                 "bridge_file": "FRITZ.Box_7590-07.59.image",
                 "final_file": "FRITZ.Box_7590-08.20.image"
             },
@@ -387,14 +387,14 @@ class FritzBox:
             '//*[@id="uiApply"]',
             '//button[@name="apply"]',  # <--- NEU basierend auf deinem Feedback
             '//*[@id="uiForward"]',
-            '//button[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
-            '//a[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
-            '//button[contains(translate(text(), "WEITER", "weiter"), "fortschritt anzeigen")]',
-            '//a[contains(translate(text(), "WEITER", "weiter"), "fortschritt anzeigen")]',
-            '//button[contains(translate(text(), "WEITER", "weiter"), "schritt überspringen")]',
-            '//a[contains(translate(text(), "WEITER", "weiter"), "schritt überspringen")]',
-            '//button[contains(translate(text(), "WEITER", "weiter"), "schritt abschließen")]',
-            '//a[contains(translate(text(), "WEITER", "weiter"), "schritt abschließen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt überspringen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt überspringen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
             '//button[contains(translate(text(), "OK", "ok"), "ok")]',
             '//a[contains(translate(text(), "OK", "ok"), "ok")]',
             '//button[contains(translate(text(), "ÜBERNEHMEN", "übernehmen"), "übernehmen")]',
