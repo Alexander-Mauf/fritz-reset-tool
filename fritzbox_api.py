@@ -808,10 +808,9 @@ class FritzBox:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
-
     @require_login
     def get_firmware_version(self) -> str | bool:
-        """Ermittelt die aktuelle Firmware-Version der FritzBox."""
+        """Ermittelt die aktuelle Firmware-Version der FritzBox, inkl. JS3-Input für 08.20+."""
         print("ℹ️ Ermittle Firmware-Version...")
         self._close_any_overlay()
         try:
@@ -825,29 +824,35 @@ class FritzBox:
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
-            primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
-            cpoc_selector = '//*[@id="cpoc1"]'  # Neu ab 08.20
-            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'
-
             version_text = ""
+
+            # --- Neuer JS3-Input Ansatz (z.B. 08.20) ---
             try:
-                # 1. Versuche den primären Selector
-                version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
-                version_text = version_elem.text.strip()
+                js3_input = self.browser.driver.execute_script(
+                    "return document.querySelector('input[name=\"fritzOsVersion\"]')"
+                )
+                if js3_input:
+                    version_text = js3_input.get_attribute("value").strip()
+                    print(f"✅ JS3 Input Firmware-Version gefunden: {version_text}")
             except Exception:
+                pass
+
+            # --- Klassische Fallbacks ---
+            if not version_text:
                 try:
-                    # 2. Versuche neuen cpoc1-Selector (Firmware 08.20+)
-                    print("...primärer Selector fehlgeschlagen, versuche cpoc1-Selector (neue Firmware).")
-                    version_elem = self.browser.sicher_warten(cpoc_selector, timeout=3)
+                    primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
+                    version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
                     version_text = version_elem.text.strip()
                 except Exception:
-                    # 3. Fallback für alte Boxen (z.B. 6490)
-                    print("...cpoc1 auch nicht vorhanden, versuche Fallback-Selector.")
-                    version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
-                    full_text = version_elem.text.strip()
-                    match = re.search(r'(\d{2}\.\d{2})', full_text)
-                    if match:
-                        version_text = match.group(1)
+                    try:
+                        fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'
+                        version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
+                        full_text = version_elem.text.strip()
+                        match = re.search(r'(\d{1,2}\.\d{1,2})', full_text)
+                        if match:
+                            version_text = match.group(1)
+                    except Exception:
+                        pass
 
             if version_text:
                 self.os_version = version_text
@@ -855,10 +860,11 @@ class FritzBox:
                 return self.os_version
             else:
                 print("❌ Keine Firmware-Version gefunden auf der Update-Seite.")
-                return False  # KORREKTUR: Bei Fehler False zurückgeben
+                return False
+
         except Exception as e:
-            print(f"❌ Fehler beim Ermitteln der Firmware-Version: ")
-            return False  # KORREKTUR: Bei Fehler False zurückgeben
+            print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
+            return False
 
     @require_login
     def get_box_model(self) -> str | bool:
