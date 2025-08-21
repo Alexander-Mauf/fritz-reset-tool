@@ -648,86 +648,109 @@ class FritzBox:
 
     @require_login
     def perform_factory_reset_from_ui(self) -> bool:
-        """
-        Setzt die FritzBox auf Werkseinstellungen zurück. Verwendet sprachunabhängige
-        IDs und eine mehrsprachige Textsuche für maximale Kompatibilität.
-        """
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
-            # --- Schritt 1: Den Reset-Vorgang einleiten ---
-            print("...navigiere zu den Werkseinstellungen.")
-            # Navigation (sprachunabhängig via ID)
+            # -------------------------
+            # ALT: Klassischer Workflow
+            # -------------------------
+            print("➡️ Versuche klassischen Workflow...")
+            if self._factory_reset_classic():
+                return True
+            print("❌ Klassischer Workflow fehlgeschlagen – versuche neuen JS3-Workflow...")
+
+            # -------------------------
+            # NEU: JS3 Workflow
+            # -------------------------
+            if self._factory_reset_js3():
+                return True
+            else:
+                print("❌ Auch der JS3-Workflow ist fehlgeschlagen.")
+                return False
+
+        except Exception as e:
+            print(f"❌ Unerwarteter Fehler: {e}")
+            return False
+
+    def _factory_reset_classic(self) -> bool:
+        """Alter Workflow mit erstem OK-Dialog"""
+        try:
             if not self.browser.klicken('//*[@id="mSave"]', timeout=2, versuche=1):
-                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5):
+                    return False
                 time.sleep(1)
-                if not self.browser.klicken('//*[@id="mSave"]', timeout=5): return False
+                if not self.browser.klicken('//*[@id="mSave"]', timeout=5):
+                    return False
             time.sleep(1)
 
             self.browser.klicken('//*[@id="default"]')
             time.sleep(1)
 
-
-            # Klick auf den Tab "Werkseinstellungen" (sprachunabhängig via ID)
-            confirm_button_xpaths = [
-                '//*[@id="uiDefaults"]',  # Idealfall: Der Button hat eine feste ID
-                '//*[@id="content"]/div/button'  # Fallback: Struktureller XPath, der bei Ihnen funktioniert hat
-            ]
-            found_confirm_button = False
-            for xpath in confirm_button_xpaths:
-                if self.browser.klicken(xpath, timeout=2, versuche=1):
-                    print(f"✅ Schritt 1: Reset-Button geklickt via XPath: {xpath}")
-                    found_confirm_button = True
-                    break
-
-            if not found_confirm_button:
-                print("❌ Konnte den 'Werkseinstellungen laden'-Button nicht finden.")
+            if not (self.browser.klicken('//*[@id="uiDefaults"]', timeout=3, versuche=1) or
+                    self.browser.klicken('//*[@id="content"]/div/button', timeout=3, versuche=1) or
+                    self.browser.klicken('//a[contains(text(),"Werkseinstellungen laden")]', timeout=3, versuche=1)):
                 return False
             time.sleep(2)
 
-            # --- Schritt 2: Den ersten "OK"-Dialog bestätigen ---
-            print("...suche nach Bestätigungs-Dialog.")
-            # Klick auf den "OK"-Button (sprachunabhängig via ID #Button1)
-            first_ok_xpath = '//*[@id="Button1"]'
-            if not self.browser.klicken(first_ok_xpath, timeout=5):
-                print("❌ Konnte den ersten Bestätigungs-Dialog (#Button1) nicht finden.")
+            if not self.browser.klicken('//*[@id="Button1"]', timeout=5):
                 return False
-            print("✅ Schritt 2: Erster OK-Dialog bestätigt.")
-            print("⚠️ℹ️⚠️ Schritt 3: Bitte jetzt physischen Knopf an der Box drücken...")
+            print("✅ Klassischer Workflow: Erster OK-Dialog bestätigt.")
 
-            # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
-
-            ok_xpath = '//button[contains(text(),"OK")]'
-            retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
-            tries = 0
-            while True:
-                try:
-                    btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
-                    time.sleep(2)
-                    btn.click()
-                    print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
-                    break  # Dies ist der einzige Ausweg aus der unendlichen Schleife.
-                except Exception:  # Wird ausgelöst, wenn 'sicher_warten' nach 180s fehlschlägt.
-                    print("⏳ 'OK'-Button nicht im Zeitfenster gefunden. Suche nach Fallback...")
-                    try:
-                        retry_btn = self.browser.sicher_warten(retry_xpath, timeout=5, sichtbar=True)
-                        retry_btn.click()
-                        print("🔁 'Wiederholen/Retry' geklickt. Starte neuen Suchlauf für 'OK'.")
-                    except Exception:
-                        print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
-                        time.sleep(10)
-                tries +=1
-                if tries >8:
-                    print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
-                    return False
-
+            return self._wait_for_physical_button()
         except Exception:
-            print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
-            self.is_reset = True
+            return False
 
-        # --- Schritt 5: Auf Neustart der Box warten und finalen Zustand prüfen ---
+    def _factory_reset_js3(self) -> bool:
+        """Neuer Workflow mit Tile + Dialog"""
+        try:
+            if not self.browser.klicken('//*[@id="js3ContentBox"]//js3-view//div/article//js3-tile//a/div[2]/div',
+                                        timeout=5, versuche=1):
+                if not self.browser.klicken('//a[contains(text(),"Werkseinstellungen laden")]', timeout=5, versuche=1):
+                    return False
+            time.sleep(1)
+
+            if not (self.browser.klicken('//*[@id="js3ContentBox"]//js3-dialog//js3-button[1]/button', timeout=5,
+                                         versuche=1) or
+                    self.browser.klicken('//button[contains(text(),"Werkseinstellungen laden")]', timeout=5,
+                                         versuche=1)):
+                return False
+            print("✅ JS3 Workflow: zweiter Klick im Dialog durchgeführt.")
+
+            return self._wait_for_physical_button()
+        except Exception:
+            return False
+
+    def _wait_for_physical_button(self) -> bool:
+        """Gemeinsamer Schritt: physischen Knopf drücken und finalen OK bestätigen"""
+        print("⚠️ Bitte jetzt physischen Knopf an der Box drücken...")
+
+        ok_xpath = '//button[contains(text(),"OK")]'
+        retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
+
+        tries = 0
+        while True:
+            try:
+                btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
+                time.sleep(2)
+                btn.click()
+                print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
+                break
+            except Exception:
+                print("⏳ 'OK'-Button nicht im Zeitfenster gefunden. Suche nach Fallback...")
+                try:
+                    retry_btn = self.browser.sicher_warten(retry_xpath, timeout=5, sichtbar=True)
+                    retry_btn.click()
+                    print("🔁 'Wiederholen/Retry' geklickt. Starte neuen Suchlauf für 'OK'.")
+                except Exception:
+                    print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
+                    time.sleep(10)
+            tries += 1
+            if tries > 8:
+                print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
+                return False
+
         print("...warte auf Neustart der Box (kann einige Minuten dauern).")
-        time.sleep(45)
+        time.sleep(45)  # Grundwartezeit
         if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
             print("✅ Box ist nach dem Reset wieder erreichbar.")
             if self.ist_sprachauswahl():
@@ -739,6 +762,7 @@ class FritzBox:
         else:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
+
 
     @require_login
     def get_firmware_version(self) -> str | bool:
@@ -757,7 +781,8 @@ class FritzBox:
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
             primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
-            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'  # Ihr Selector, leicht präzisiert
+            cpoc_selector = '//*[@id="cpoc1"]'  # Neu ab 08.20
+            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'
 
             version_text = ""
             try:
@@ -765,15 +790,19 @@ class FritzBox:
                 version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
                 version_text = version_elem.text.strip()
             except Exception:
-                # 2. Wenn er fehlschlägt, versuche den Fallback-Selector
-                print("...primärer Versions-Selector nicht gefunden, versuche Fallback (z.B. für 6490).")
-                version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
-                full_text = version_elem.text.strip()
-
-                # 3. Extrahiere die Versionsnummer (z.B. "07.29") aus dem Text "FRITZ!OS: 07.29"
-                match = re.search(r'(\d{2}\.\d{2})', full_text)
-                if match:
-                    version_text = match.group(1)
+                try:
+                    # 2. Versuche neuen cpoc1-Selector (Firmware 08.20+)
+                    print("...primärer Selector fehlgeschlagen, versuche cpoc1-Selector (neue Firmware).")
+                    version_elem = self.browser.sicher_warten(cpoc_selector, timeout=3)
+                    version_text = version_elem.text.strip()
+                except Exception:
+                    # 3. Fallback für alte Boxen (z.B. 6490)
+                    print("...cpoc1 auch nicht vorhanden, versuche Fallback-Selector.")
+                    version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
+                    full_text = version_elem.text.strip()
+                    match = re.search(r'(\d{2}\.\d{2})', full_text)
+                    if match:
+                        version_text = match.group(1)
 
             if version_text:
                 self.os_version = version_text
