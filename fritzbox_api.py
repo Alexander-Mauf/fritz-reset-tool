@@ -404,7 +404,7 @@ class FritzBox:
 
         for xpath in positive_buttons_xpaths:
             # Wir nutzen einen sehr kurzen Timeout, da wir nur prüfen, ob der Button gerade da ist.
-            if self.browser.klicken(xpath, timeout=0.5, versuche=1):
+            if self.browser.klicken(xpath, timeout=0.5, versuche=1, verbose=False):
                 print(f"✅ Generischen Dialog-Button geklickt: {xpath}")
                 return True
         return False
