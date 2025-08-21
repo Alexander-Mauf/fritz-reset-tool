@@ -53,90 +53,64 @@ class WorkflowOrchestrator:
 
     def _run_step_with_retry(self, description: str, func, *args, **kwargs) -> bool:
         """
-        Führt einen einzelnen Schritt aus und bietet Optionen zur Wiederholung/Überspringen bei Fehlern.
-        Gibt True zurück, wenn der Schritt erfolgreich war oder übersprungen wurde, False bei Abbruch.
+        Führt einen Schritt aus mit automatischen Wiederholungen.
+        Speziell beim Login:
+          - 1. Fehlschlag → Werkreset
+          - 2. Fehlschlag → Benutzer nach neuem Passwort fragen
         """
         print(f"\n➡️ {description}...")
 
         max_attempts = 2
-        for attempt in range(max_attempts):
+        attempt = 0
+        while attempt < max_attempts:
             try:
                 self.ensure_browser()
-
                 result = func(*args, **kwargs)
 
-                # Eine explizite Rückgabe von False durch die Funktion signalisiert einen kontrollierten Fehlschlag.
                 if result is False:
-                    print(
-                        f"⚠️ Funktion '{description}' meldete expliziten Fehlschlag (Versuch {attempt + 1}/{max_attempts}).")
-                    if attempt < max_attempts - 1:
-                        print("🔁 Versuche es erneut...")
-                        time.sleep(2)
-                        continue
-                    else:
-                        # Nach allen automatischen Versuchen ist der Schritt fehlgeschlagen.
-                        # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
-                        break
+                    attempt += 1
+                    print(f"⚠️ Funktion '{description}' meldete Fehlschlag (Versuch {attempt}/{max_attempts}).")
 
-                print("✅ Schritt erfolgreich.")
-                return True
+                    if description.lower().startswith("login") and attempt == 1:
+                        # 1️⃣ Werkreset nach erstem Fehlschlag
+                        print("\n❗Login fehlgeschlagen. Starte Werkreset, um Standard-PW zu verwenden...")
+                        if not self.fritzbox.reset_via_forgot_password():
+                            print("❌ Werkseinstellung fehlgeschlagen, Abbruch.")
+                            return False
+                        print("✅ Werkseinstellung abgeschlossen, versuche erneut Login...")
+                        continue
+
+                    elif attempt >= max_attempts:
+                        # 2️⃣ Nach erneutem Fehlschlag Benutzer nach neuem Passwort fragen
+                        print("\n⚠️ Login erneut fehlgeschlagen. Benutzer muss neues Passwort eingeben...")
+                        letztes_passwort = None
+                        while True:
+                            neues_passwort = input("🔑 Bitte neues Passwort für die FritzBox eingeben: ").strip()
+                            if neues_passwort == letztes_passwort:
+                                print("⚠️ Passwort identisch zum letzten Versuch, überprüfe Eingabe...")
+                            if self.fritzbox.login(neues_passwort):
+                                print("✅ Login erfolgreich mit neuem Passwort!")
+                                return True
+                            else:
+                                print("❌ Passwort falsch, bitte erneut eingeben.")
+                                letztes_passwort = neues_passwort
+
+                else:
+                    print("✅ Schritt erfolgreich.")
+                    return True
 
             except Exception as e:
-                print(f"⚠️ Fehler bei '{description}' (Versuch {attempt + 1}/{max_attempts}) Error:{e}")
-                if attempt < max_attempts - 1:
-                    print("🔁 Versuche es erneut...")
-                    time.sleep(2)
-                else:
-                    # Nach allen automatischen Versuchen ist der Schritt fehlgeschlagen.
-                    # Wir brechen hier aus der Schleife aus, um zur Benutzerabfrage zu gelangen.
-                    break
+                attempt += 1
+                print(f"⚠️ Fehler bei '{description}' (Versuch {attempt}/{max_attempts}) Error: {e}")
+                time.sleep(2)
 
-        # Wenn der fehlgeschlagene Schritt der Login war:
-        if description == "Login durchführen":
-            print("\nLogin ist fehlgeschlagen. Starte Werksreset...")
-
-            # 1️⃣ Werksreset automatisch durchführen
-            if not self.fritzbox.reset_via_forgot_password():
-                print("❌ Werkseinstellung fehlgeschlagen, Abbruch.")
-                return False
-
-            print("✅ Werkseinstellung abgeschlossen.")
-
-            # 2️⃣ Danach Passwort-Abfrage starten
-            letztes_passwort = None
-            while True:
-                neues_passwort = input("🔑 Bitte neues Passwort für die FritzBox eingeben: ").strip()
-
-                if neues_passwort == letztes_passwort:
-                    print("⚠️ Passwort identisch zum letzten Versuch, überprüfe Eingabe...")
-                    # 3️⃣ Passwort-Check, ob eingegebenes Passwort korrekt ist
-                    if self.fritzbox.check_password():
-                        print("✅ Passwort korrekt, Login wird versucht...")
-                        if self.fritzbox.login(neues_passwort):
-                            return True
-                    else:
-                        print("❌ Passwort erneut falsch.")
-                else:
-                    print("🔁 Versuche Login mit dem neuen Passwort...")
-                    if self.fritzbox.login(neues_passwort):
-                        print("✅ Login erfolgreich!")
-                        return True
-                    else:
-                        print("❌ Passwort falsch, bitte erneut eingeben.")
-                        letztes_passwort = neues_passwort
-
-        # Wenn die Schleife beendet ist (nach max_attempts oder explizitem False),
-        # fragen wir den Benutzer, was zu tun ist.
+        # Wenn andere Schritte fehlschlagen, Benutzer entscheiden lassen
         while True:
-            auswahl = input(
-                "🔁 (W)iederholen, (Ü)berspringen, (B)eenden, (N)eue FritzBox? "
-            ).strip().lower()
-
+            auswahl = input("🔁 (W)iederholen, (Ü)berspringen, (B)eenden, (N)eue FritzBox? ").strip().lower()
             if auswahl == "b":
                 print("⛔ Vorgang abgebrochen.")
                 return False
             elif auswahl == "w":
-                # Rekursiver Aufruf für Wiederholung mit Retry-Logik
                 return self._run_step_with_retry(description, func, *args, **kwargs)
             elif auswahl == "ü":
                 print("⏭️ Schritt übersprungen.")
