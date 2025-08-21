@@ -716,7 +716,7 @@ class FritzBox:
             const js3modal = shadow1.querySelector('js3-dialog').querySelector('dialog').querySelector('div');
             const shadow3 = js3modal.querySelector('js3-view').shadowRoot;
             
-            time.sleep(3);
+            await new Promise(r => setTimeout(r, 3000));
             shadow3.querySelector('js3-button[level="critical"]').click();
             """)
 
