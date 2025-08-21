@@ -701,23 +701,68 @@ class FritzBox:
             return False
 
     def _factory_reset_js3(self) -> bool:
-        """Neuer Workflow mit Tile + Dialog"""
+        """Neuer Workflow mit Tile + Dialog (robust für Shadow DOM / JS3)."""
         try:
-            if not self.browser.klicken('//*[@id="js3ContentBox"]//js3-view//div/article//js3-tile//a/div[2]/div',
-                                        timeout=5, versuche=1):
-                if not self.browser.klicken('//a[contains(text(),"Werkseinstellungen laden")]', timeout=5, versuche=1):
-                    return False
+            # --- Schritt 1: Tile klicken ---
+            clicked = False
+            tile_selectors = [
+                '#js3ContentBox js3-view article div:nth-child(2) js3-tile a',  # Shadow DOM Pfad
+                '//a[contains(text(),"Werkseinstellungen laden")]'  # Fallback XPath
+            ]
+            for sel in tile_selectors:
+                try:
+                    # Versuche erst JS-Clique über querySelector
+                    if sel.startswith('#'):
+                        self.browser.driver.execute_script(
+                            f"document.querySelector('{sel}').click()"
+                        )
+                        clicked = True
+                        print(f"✅ JS3 Workflow: Tile geklickt via querySelector: {sel}")
+                        break
+                    else:
+                        # Klassischer XPath-Fallback
+                        clicked = self.browser.klicken(sel, timeout=5, versuche=1)
+                        if clicked:
+                            print(f"✅ JS3 Workflow: Tile geklickt via XPath: {sel}")
+                            break
+                except Exception:
+                    continue
+            if not clicked:
+                print("❌ JS3 Workflow: Konnte Tile nicht finden.")
+                return False
             time.sleep(1)
 
-            if not (self.browser.klicken('//*[@id="js3ContentBox"]//js3-dialog//js3-button[1]/button', timeout=5,
-                                         versuche=1) or
-                    self.browser.klicken('//button[contains(text(),"Werkseinstellungen laden")]', timeout=5,
-                                         versuche=1)):
+            # --- Schritt 2: Dialog-Knopf klicken ---
+            clicked = False
+            dialog_selectors = [
+                '#js3ContentBox js3-dialog js3-button:nth-child(1) button',  # Shadow DOM Pfad
+                '//button[contains(text(),"Werkseinstellungen laden")]',  # Fallback XPath
+            ]
+            for sel in dialog_selectors:
+                try:
+                    if sel.startswith('#'):
+                        self.browser.driver.execute_script(
+                            f"document.querySelector('{sel}').click()"
+                        )
+                        clicked = True
+                        print(f"✅ JS3 Workflow: Dialog-Knopf geklickt via querySelector: {sel}")
+                        break
+                    else:
+                        clicked = self.browser.klicken(sel, timeout=5, versuche=1)
+                        if clicked:
+                            print(f"✅ JS3 Workflow: Dialog-Knopf geklickt via XPath: {sel}")
+                            break
+                except Exception:
+                    continue
+            if not clicked:
+                print("❌ JS3 Workflow: Dialog-Knopf nicht gefunden.")
                 return False
-            print("✅ JS3 Workflow: zweiter Klick im Dialog durchgeführt.")
 
+            # --- Schritt 3: Warten auf physischen Knopf ---
             return self._wait_for_physical_button()
-        except Exception:
+
+        except Exception as e:
+            print(f"❌ JS3 Workflow fehlgeschlagen: {e}")
             return False
 
     def _wait_for_physical_button(self) -> bool:
