@@ -135,6 +135,7 @@ class WorkflowOrchestrator:
                 ("WLAN-Antennen prüfen", self.fritzbox.check_wlan_antennas),
                 ("Werkseinstellungen über UI", self.fritzbox.perform_factory_reset_from_ui),
                 ("WLAN-Scan Zusammenfassung", self.fritzbox.show_wlan_summary),
+                ("FritzBox Erreichbarkeit prüfen", self.fritzbox.warte_auf_erreichbarkeit),
             ]
 
             for step_name, func, *args in workflow_steps:
