@@ -719,7 +719,7 @@ class FritzBox:
             shadow3.querySelector('js3-button[level="critical"]').click();
             """)
 
-            for attempt in range(5):
+            for attempt in range(20):
                 return_value = self.browser.driver.execute_script("""
                     const contentBox = document.querySelector('#js3ContentBox');
                     if (!contentBox) return false;
@@ -737,9 +737,9 @@ class FritzBox:
                     return return_value
                 else:
                     print(f"Versuch {attempt + 1}: OK Button im JS noch nicht gefunden.")
-                    time.sleep(2)
+                    time.sleep(10)
 
-            print("OK Button konnte nach 5 Versuchen nicht gefunden/geclicked werden.")
+            print("OK Button konnte nach 20 Versuchen (200 Sek) nicht gefunden/geclicked werden.")
             return return_value
 
 
