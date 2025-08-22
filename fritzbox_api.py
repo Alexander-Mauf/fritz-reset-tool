@@ -1,4 +1,3 @@
-# fritzbox_api.py
 import time
 import requests
 import os
@@ -14,11 +13,8 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from browser_utils import Browser
 
-
 FRITZ_DEFAULT_URL = "http://fritz.box"
 
-
-# fritzbox_api.py
 
 class FirmwareManager:
     """Verwaltet Firmware-Dateien und deren Pfade für mehrstufige Updates."""
@@ -27,40 +23,37 @@ class FirmwareManager:
         self.firmware_mapping = {
             "7590": {
                 "bridge": "07.59",
-                "final": "08.03",
-                "bridge_file": "FRITZ.Box_7590-07.59.image", # Beispielhafter Dateiname
-                "final_file": "FRITZ.Box_7590-08.03.image"
+                "final": "08.20",
+                "bridge_file": "FRITZ.Box_7590-07.59.image",
+                "final_file": "FRITZ.Box_7590-08.20.image"
+            },
+            "7590_AX": {
+                "final": "08.02",
+                "final_file": "FRITZ.Box_7590-AX-08.02.image"
             },
             "7530": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "08.02",
                 "final_file": "FRITZ.Box_7530-08.02.image"
             },
             "7490": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.60",
                 "final_file": "FRITZ.Box_7490-07.60.image"
             },
             "7582": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.18",
                 "final_file": "FRITZ.Box_7582-07.18.image"
             },
             "6660": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "08.03",
                 "final_file": "FRITZ.Box_6660_Cable-08.03.image"
             },
             "6890": {
-                # Für dieses Modell gibt es keinen Zwischenschritt, nur ein finales Ziel
                 "final": "07.57",
                 "final_file": "FRITZ.Box_6890_LTE-07.57.image"
             }
-            # Weitere Modelle hier hinzufügen
         }
 
     def _select_firmware_path_manually(self):
-        # ... (diese Methode bleibt unverändert)
         root = tk.Tk()
         root.withdraw()
         file_path = filedialog.askopenfilename(
@@ -79,7 +72,7 @@ class FirmwareManager:
             return self._select_firmware_path_manually()
 
         model_files = self.firmware_mapping[box_model]
-        file_key = f"{version_type}_file" # z.B. "bridge_file" oder "final_file"
+        file_key = f"{version_type}_file"  # z.B. "bridge_file" oder "final_file"
 
         if file_key not in model_files:
             print(f"⚠️ Kein '{version_type}'-Update für Modell {box_model} definiert. Manuelle Auswahl.")
@@ -128,8 +121,6 @@ def require_login(func):
         return func(self, *args, **kwargs)
 
     return wrapper
-
-
 
 
 class FritzBox:
@@ -190,17 +181,19 @@ class FritzBox:
         try:
             # Hier keinen get_url aufruf! wird vor dem aufruf im login gemacht
             # Prüfe, ob Sprachauswahl-Elemente da sind
-            if self.browser.sicher_warten('//*[@id="uiLanguage-en"]', timeout=2, sichtbar=False):
-                print("🌐 Sprachauswahl erkannt. Setze auf Englisch...")
-                if self.browser.klicken('//*[@id="uiLanguage-en"]'):
+            if self.browser.sicher_warten('//*[@id="uiLanguage-de"]', timeout=2, sichtbar=False):
+                print("🌐 Sprachauswahl erkannt. Setze auf Deutsch...")
+                if self.browser.klicken('//*[@id="uiLanguage-de"]'):
                     if self.browser.klicken('//*[@id="submitLangBtn"]'):
                         time.sleep(3)
-                        self.language = "en"
+                        self.language = "de"
                         return True
                     print("⚠️ 'Sprache übernehmen'-Button nicht klickbar.")
                 print("⚠️ Sprachauswahl-Button nicht klickbar.")
+            else:
+                print("ℹ️ Keine Sprachauswahl erkannt.")
         except Exception:
-            print("ℹ️ Keine Sprachauswahl erkannt oder konnte nicht verarbeitet werden.")
+            print("⚠️ Sprachauswahl konnte nicht verarbeitet werden.")
         return False
 
     def is_main_menu_loaded_and_ready(self, timeout=5) -> bool:
@@ -217,7 +210,9 @@ class FritzBox:
         # print(f"🔍 Prüfe auf geladenes und klickbares Hauptmenü (Timeout: {timeout}s)...")
         for xpath in menu_xpaths:
             try:
-                element = self.browser.sicher_warten(xpath, timeout=timeout/len(menu_xpaths) if menu_xpaths else timeout, sichtbar=True)
+                element = self.browser.sicher_warten(xpath,
+                                                     timeout=timeout / len(menu_xpaths) if menu_xpaths else timeout,
+                                                     sichtbar=True)
                 if element and element.is_displayed() and element.is_enabled():
                     # print(f"✅ Hauptmenü-Element '{xpath}' gefunden und bereit.")
                     return True
@@ -259,28 +254,48 @@ class FritzBox:
             self.password = password
         if self.browser.driver is None:
             print("⚠️ Browser-Instanz fehlt – starte neue WebDriver-Instanz...")
-        try:
-            from browser_utils import setup_browser, Browser
-            new_driver = setup_browser()
-            self.browser = Browser(new_driver)
-            print("✅ Neuer Browser gestartet.")
-        except Exception as e:
-            print(f"❌ Konnte keine neue Browser-Instanz erstellen: {e}")
-            return False
+            try:
+                from browser_utils import setup_browser, Browser
+                new_driver = setup_browser()
+                self.browser = Browser(new_driver)
+                print("✅ Neuer Browser gestartet.")
+            except Exception as e:
+                print(f"❌ Konnte keine neue Browser-Instanz erstellen: {e}")
+                return False
         print("Reload der startseite")
         self.browser.reload(self.url)
         print("🔐 Login wird versucht...")
-
 
         if not force_reload and self.is_logged_in_and_menu_ready(timeout=3):
             print("✅ Bereits eingeloggt und Hauptmenü bereit.")
             return True
 
-        if self._handle_language_selection():
-            self.browser.get_url(self.url)
-
         while True:
+            # gelegentlich gibt es boxen, die keine PW nach reset haben, sondern mal muss es selbst vergeben
+            # zuerst kommt Bitte drücken Sie kurz eine beliebige Taste an Ihrer FRITZ!Box, um sich anzumelden.
+            # --- NEU: Prüfen auf "Bitte Taste drücken"-Dialog ---
+            try:
+                text_xpath = '//div[@class="dialog_content"]//p[contains(text(),"Bitte drücken Sie kurz eine beliebige Taste")]'
+                self.browser.sicher_warten(text_xpath, timeout=5)
+                print("⚠️ℹ️⚠️ FritzBox verlangt physischen Tastendruck zur Anmeldung.")
+                print("👉 Bitte jetzt Taste an der Box drücken...")
+
+            except Exception:
+                print("Kein physischer Tastendruck-Dialog gefunden. Fahre normal fort...")
+
+            try:
+                self.browser.sicher_warten('//*[@id="uiPass-input"]',timeout=20)
+                self.browser.schreiben('//*[@id="uiPass-input"]', self.password)
+                self.browser.klicken('//button[contains(text(),"OK")]')
+                self.browser.klicken('//*[@id="uiApply"]')
+                print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
+                print(f"Es wurde ein Passwort gesetzt: {self.password}")
+                return True
+            except:
+                print("Box hat ein existentes Passwort.")
+
             self.browser.get_url(self.url)
+            self._handle_language_selection()
             try:
                 self.browser.sicher_warten('//*[@id="uiPass"]')
                 break
@@ -333,31 +348,29 @@ class FritzBox:
                 print("   ...kein spezifischer Dialog gefunden, versuche generischen Fallback.")
                 self._handle_any_dialog_button()
 
-            time.sleep(1.5) # Pause zwischen den Runden
-
         print("❌ Login-Vorgang abgebrochen: Nach mehreren Versuchen konnte das Hauptmenü nicht erreicht werden.")
         self.is_logged_in = False
         return False
 
-
     def continue_setup(self) -> bool:
         """prüft am Anfang, ob ein 'einrichtung fortsetzen' dialog aufgeht und beendet diesen"""
         try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
+            btn = self.browser.sicher_warten(
+                '//button[contains(translate(text(), "Einrichtung jetzt beenden", "einrichtung jetzt beenden"), "einrichtung jetzt beenden")]')
             btn.click()
             print("Clicking the Einrichtung jetzt beenden Button.")
         except:
             return False
 
         try:
-            btn = self.browser.sicher_warten('//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
+            btn = self.browser.sicher_warten(
+                '//button[contains(translate(text(), "Einrichtung abschließen", "einrichtung abschließen"), "einrichtung abschließen")]')
             btn.click()
             print("Clicking the Einrichtung abschließen Button.")
         except:
             return False
 
         return True
-
 
     def _handle_any_dialog_button(self) -> bool:
         """
@@ -369,8 +382,14 @@ class FritzBox:
             '//*[@id="uiApply"]',
             '//button[@name="apply"]',  # <--- NEU basierend auf deinem Feedback
             '//*[@id="uiForward"]',
-            '//button[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
-            '//a[contains(translate(text(), "WEITER", "weiter"), "weiter")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "weiter")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "fortschritt anzeigen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ", "abcdefghijklmnopqrstuvwxyzäöü"), "schritt überspringen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ", "abcdefghijklmnopqrstuvwxyzäöü"), "schritt überspringen")]',
+            '//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
+            '//a[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "schritt abschließen")]',
             '//button[contains(translate(text(), "OK", "ok"), "ok")]',
             '//a[contains(translate(text(), "OK", "ok"), "ok")]',
             '//button[contains(translate(text(), "ÜBERNEHMEN", "übernehmen"), "übernehmen")]',
@@ -381,7 +400,7 @@ class FritzBox:
 
         for xpath in positive_buttons_xpaths:
             # Wir nutzen einen sehr kurzen Timeout, da wir nur prüfen, ob der Button gerade da ist.
-            if self.browser.klicken(xpath, timeout=0.5, versuche=1):
+            if self.browser.klicken(xpath, timeout=0.5, versuche=1, verbose=False):
                 print(f"✅ Generischen Dialog-Button geklickt: {xpath}")
                 return True
         return False
@@ -390,19 +409,21 @@ class FritzBox:
         """Behandelt den Dialog 'Neue Firmware wurde installiert'."""
         try:
             # Suchen nach einem eindeutigen Text oder Button dieses Dialogs
-            if self.browser.sicher_warten('//h1[contains(text(), "FRITZ!OS wurde aktualisiert")]', timeout=1, sichtbar=False):
+            if self.browser.sicher_warten('//h1[contains(text(), "FRITZ!OS wurde aktualisiert")]', timeout=1,
+                                          sichtbar=False):
                 print("...behandle 'Firmware aktualisiert'-Dialog.")
                 # Klickt auf OK oder Weiter
-                self.browser.klicken('//button[contains(text(), "OK")] | //a[contains(text(), "Weiter")]', timeout=3, versuche=1)
+                self.browser.klicken('//button[contains(text(), "OK")] | //a[contains(text(), "Weiter")]', timeout=3,
+                                     versuche=1)
                 return True
         except Exception:
-            pass # Element nicht gefunden, also war dieser Dialog nicht da.
+            pass  # Element nicht gefunden, also war dieser Dialog nicht da.
         return False
 
     def dsl_setup_init(self) -> bool:
         """Behandelt den initialen DSL-Einrichtungs-Assistenten."""
         try:
-             # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
+            # Dieser Assistent wird oft durch den "Weiter"-Button mit der ID 'uiForward' eingeleitet
             if self.browser.sicher_warten('//*[@id="uiForward"]', timeout=1, sichtbar=False):
                 print("...behandle initialen DSL-Setup-Dialog.")
                 try:
@@ -480,7 +501,7 @@ class FritzBox:
     def skip_configuration(self) -> bool:
         """Behandelt generische Konfigurations-Dialoge mit einem "Schließen" oder "OK" Button."""
         try:
-             # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
+            # Dieser Dialog hat oft einen allgemeinen Button mit ID "Button1"
             if self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False):
                 print("...überspringe generischen Konfigurations-Dialog.")
                 btn = self.browser.sicher_warten('//*[@id="Button1"]', timeout=1, sichtbar=False)
@@ -563,7 +584,7 @@ class FritzBox:
         # Schritt 3: Falls der Button gar nicht kommt → nur Info, kein Exit
         print("⚠️ Reset konnte nicht ausgelöst werden – Button 'sendFacReset' nicht verfügbar. "
               "Möglicherweise war die Box zu lange an oder ist schon neu gestartet.")
-        return None # damit der Workflow nicht hart abbricht, falls nicht gefunden
+        return None  # damit der Workflow nicht hart abbricht, falls nicht gefunden
 
     @require_login
     def activate_expert_mode_if_needed(self) -> bool:
@@ -625,84 +646,138 @@ class FritzBox:
 
     @require_login
     def perform_factory_reset_from_ui(self) -> bool:
-        """
-        Setzt die FritzBox auf Werkseinstellungen zurück. Verwendet sprachunabhängige
-        IDs und eine mehrsprachige Textsuche für maximale Kompatibilität.
-        """
         print("🚨 Werkseinstellungen (aus der Oberfläche)...")
 
         try:
-            # --- Schritt 1: Den Reset-Vorgang einleiten ---
-            print("...navigiere zu den Werkseinstellungen.")
-            # Navigation (sprachunabhängig via ID)
+            # -------------------------
+            # ALT: Klassischer Workflow
+            # -------------------------
+            print("➡️ Versuche klassischen Workflow...")
+            if self._factory_reset_classic():
+                return True
+            print("❌ Klassischer Workflow fehlgeschlagen – versuche neuen JS3-Workflow...")
+
+            # -------------------------
+            # NEU: JS3 Workflow
+            # -------------------------
+            if self._factory_reset_js3():
+                return True
+            else:
+                print("❌ Auch der JS3-Workflow ist fehlgeschlagen.")
+                return False
+
+        except Exception as e:
+            print(f"❌ Unerwarteter Fehler: {e}")
+            return False
+
+    def _factory_reset_classic(self) -> bool:
+        """Alter Workflow mit erstem OK-Dialog"""
+        try:
             if not self.browser.klicken('//*[@id="mSave"]', timeout=2, versuche=1):
-                if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
+                if not self.browser.klicken('//*[@id="sys"]', timeout=5):
+                    return False
                 time.sleep(1)
-                if not self.browser.klicken('//*[@id="mSave"]', timeout=5): return False
+                if not self.browser.klicken('//*[@id="mSave"]', timeout=5):
+                    return False
             time.sleep(1)
 
             self.browser.klicken('//*[@id="default"]')
             time.sleep(1)
-            # Klick auf den Tab "Werkseinstellungen" (sprachunabhängig via ID)
-            confirm_button_xpaths = [
-                '//*[@id="uiDefaults"]',  # Idealfall: Der Button hat eine feste ID
-                '//*[@id="content"]/div/button'  # Fallback: Struktureller XPath, der bei Ihnen funktioniert hat
-            ]
-            found_confirm_button = False
-            for xpath in confirm_button_xpaths:
-                if self.browser.klicken(xpath, timeout=2, versuche=1):
-                    print(f"✅ Schritt 1: Reset-Button geklickt via XPath: {xpath}")
-                    found_confirm_button = True
-                    break
 
-            if not found_confirm_button:
-                print("❌ Konnte den 'Werkseinstellungen laden'-Button nicht finden.")
+            if not (self.browser.klicken('//*[@id="uiDefaults"]', timeout=3, versuche=1) or
+                    self.browser.klicken('//*[@id="content"]/div/button', timeout=3, versuche=1) or
+                    self.browser.klicken('//a[contains(text(),"Werkseinstellungen laden")]', timeout=3, versuche=1)):
                 return False
             time.sleep(2)
 
-            # --- Schritt 2: Den ersten "OK"-Dialog bestätigen ---
-            print("...suche nach Bestätigungs-Dialog.")
-            # Klick auf den "OK"-Button (sprachunabhängig via ID #Button1)
-            first_ok_xpath = '//*[@id="Button1"]'
-            if not self.browser.klicken(first_ok_xpath, timeout=5):
-                print("❌ Konnte den ersten Bestätigungs-Dialog (#Button1) nicht finden.")
+            if not self.browser.klicken('//*[@id="Button1"]', timeout=5):
                 return False
-            print("✅ Schritt 2: Erster OK-Dialog bestätigt.")
-            print("⚠️ℹ️⚠️ Schritt 3: Bitte jetzt physischen Knopf an der Box drücken...")
+            print("✅ Klassischer Workflow: Erster OK-Dialog bestätigt.")
 
-            # Warten auf den finalen "OK"-Button nach dem Drücken (sprachunabhängig via ID #Button1)
-
-            ok_xpath = '//button[contains(text(),"OK")]'
-            retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
-            tries = 0
-            while True:
-                try:
-                    btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
-                    time.sleep(2)
-                    btn.click()
-                    print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
-                    break  # Dies ist der einzige Ausweg aus der unendlichen Schleife.
-                except Exception:  # Wird ausgelöst, wenn 'sicher_warten' nach 180s fehlschlägt.
-                    print("⏳ 'OK'-Button nicht im Zeitfenster gefunden. Suche nach Fallback...")
-                    try:
-                        retry_btn = self.browser.sicher_warten(retry_xpath, timeout=5, sichtbar=True)
-                        retry_btn.click()
-                        print("🔁 'Wiederholen/Retry' geklickt. Starte neuen Suchlauf für 'OK'.")
-                    except Exception:
-                        print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
-                        time.sleep(10)
-                tries +=1
-                if tries >8:
-                    print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
-                    return False
-
+            return self._wait_for_physical_button()
         except Exception:
-            print("ℹ️ Kein Prozess für physischen Knopfdruck erkannt. Gehe von automatischem Reset aus.")
-            self.is_reset = True
+            return False
 
-        # --- Schritt 5: Auf Neustart der Box warten und finalen Zustand prüfen ---
+    def _factory_reset_js3(self) -> bool:
+        """Robuster Factory-Reset für JS3-Oberflächen (Shadow DOM + Fallback XPath)."""
+        try:
+            # --- Schritt 1: Tile klicken ---
+            tile_selector = 'js3-tile--info a.js3-tile__container'
+            tile_clicked = self.browser.driver.execute_script("""
+            const contentBox = document.querySelector('#js3ContentBox');
+            const shadow1 = contentBox.shadowRoot;
+            
+            const js3view = shadow1.querySelector('.js3-view');
+            const shadow2 = js3view.shadowRoot;
+            
+            shadow2.querySelector('js3-tile[ta-id="ag6vu9"]').click(); //@todo more robust selector
+            
+            const js3modal = shadow1.querySelector('js3-dialog').querySelector('dialog').querySelector('div');
+            const shadow3 = js3modal.querySelector('js3-view').shadowRoot;
+            
+            await new Promise(r => setTimeout(r, 3000));
+            shadow3.querySelector('js3-button[level="critical"]').click();
+            """)
+
+            for attempt in range(20):
+                return_value = self.browser.driver.execute_script("""
+                    const contentBox = document.querySelector('#js3ContentBox');
+                    if (!contentBox) return false;
+                    const shadow1 = contentBox.shadowRoot;
+                    const btn = shadow1.querySelector('button[title="OK"]');
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                    return false;
+                """)
+
+                if return_value:
+                    print(f"Ok-Button gefunden und geklickt: {return_value}")
+                    return return_value
+                else:
+                    print(f"Versuch {attempt + 1}: OK Button im JS noch nicht gefunden.")
+                    time.sleep(10)
+
+            print("OK Button konnte nach 20 Versuchen (200 Sek) nicht gefunden/geclicked werden.")
+            return return_value
+
+
+        except Exception as e:
+            print(f"❌ JS3 Workflow fehlgeschlagen: {e}")
+            return False
+
+    def _wait_for_physical_button(self) -> bool:
+        """Gemeinsamer Schritt: physischen Knopf drücken und finalen OK bestätigen"""
+        print("⚠️ Bitte jetzt physischen Knopf an der Box drücken...")
+
+        ok_xpath = '//button[contains(text(),"OK")]'
+        retry_xpath = '//button[contains(text(),"Wiederholen") or contains(text(),"Retry")]'
+
+        tries = 0
+        while True:
+            try:
+                btn = self.browser.sicher_warten(ok_xpath, timeout=180, sichtbar=True)
+                time.sleep(2)
+                btn.click()
+                print("✅ 'OK'-Button gefunden und geklickt. Prozess wird fortgesetzt.")
+                break
+            except Exception:
+                print("⏳ 'OK'-Button nicht im Zeitfenster gefunden. Suche nach Fallback...")
+                try:
+                    retry_btn = self.browser.sicher_warten(retry_xpath, timeout=5, sichtbar=True)
+                    retry_btn.click()
+                    print("🔁 'Wiederholen/Retry' geklickt. Starte neuen Suchlauf für 'OK'.")
+                except Exception:
+                    print("❌ Kein interaktives Element gefunden. Warte 10s und versuche es erneut.")
+                    time.sleep(10)
+            tries += 1
+            if tries > 8:
+                print("❌ 'OK' nach physischem Knopf nicht auffindbar – breche Reset ab.")
+                return False
+
         print("...warte auf Neustart der Box (kann einige Minuten dauern).")
-        time.sleep(45)
+        time.sleep(45)  # Grundwartezeit
         if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
             print("✅ Box ist nach dem Reset wieder erreichbar.")
             if self.ist_sprachauswahl():
@@ -715,9 +790,45 @@ class FritzBox:
             print("❌ Box ist nach dem Reset nicht wieder erreichbar.")
             return False
 
+    def get_firmware_version_js3(self, timeout=5):
+        """
+        Versucht, die Firmware-Version zuverlässig aus dem dynamischen JS3-DOM auszulesen.
+        Shadow DOMs werden berücksichtigt.
+        """
+        end_time = time.time() + timeout
+        version_text = ""
+
+        while time.time() < end_time:
+            try:
+                # JavaScript: rekursiv nach Input mit name="fritzOsVersion" suchen
+                js_code = """
+                function findInput(root) {
+                    if (!root) return null;
+                    if (root.shadowRoot) root = root.shadowRoot;
+                    let input = root.querySelector('input[name="fritzOsVersion"]');
+                    if (input) return input.value;
+                    for (let child of root.children) {
+                        let v = findInput(child);
+                        if (v) return v;
+                    }
+                    return null;
+                }
+                return findInput(document.querySelector('#js3ContentBox'));
+                """
+                version_text = self.browser.driver.execute_script(js_code)
+                if version_text:
+                    print(f"✅ Firmware-Version gefunden: {version_text}")
+                    return version_text
+            except Exception as e:
+                pass
+            time.sleep(0.2)  # kurz warten und erneut versuchen
+
+        print("❌ JS-Fallback konnte keine Firmware-Version finden.")
+        return ""
+
     @require_login
     def get_firmware_version(self) -> str | bool:
-        """Ermittelt die aktuelle Firmware-Version der FritzBox."""
+        """Ermittelt die aktuelle Firmware-Version der FritzBox, inkl. JS3-Input für 08.20+."""
         print("ℹ️ Ermittle Firmware-Version...")
         self._close_any_overlay()
         try:
@@ -731,24 +842,32 @@ class FritzBox:
             if not self.browser.klicken('//*[@id="sys"]', timeout=5): return False
             if not self.browser.klicken('//*[@id="mUp"]', timeout=5): return False
 
-            primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
-            fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'  # Ihr Selector, leicht präzisiert
-
             version_text = ""
-            try:
-                # 1. Versuche den primären Selector
-                version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
-                version_text = version_elem.text.strip()
-            except Exception:
-                # 2. Wenn er fehlschlägt, versuche den Fallback-Selector
-                print("...primärer Versions-Selector nicht gefunden, versuche Fallback (z.B. für 6490).")
-                version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
-                full_text = version_elem.text.strip()
 
-                # 3. Extrahiere die Versionsnummer (z.B. "07.29") aus dem Text "FRITZ!OS: 07.29"
-                match = re.search(r'(\d{2}\.\d{2})', full_text)
-                if match:
-                    version_text = match.group(1)
+            # --- Neuer JS3-Input Ansatz (z.B. 08.20) ---
+            try:
+                version_text = self.get_firmware_version_js3()
+
+            except Exception as e:
+                print(f"❌ JS-Fallback Fehler: {e}")
+                version_text = ""
+
+            # --- Klassische Fallbacks ---
+            if not version_text:
+                try:
+                    primary_selector = '//*[@class="fakeTextInput" or contains(@class, "version_text")]'
+                    version_elem = self.browser.sicher_warten(primary_selector, timeout=3)
+                    version_text = version_elem.text.strip()
+                except Exception:
+                    try:
+                        fallback_selector = '//*[@id="content"]/div[1]/div[div[contains(text(), "FRITZ!OS")]]'
+                        version_elem = self.browser.sicher_warten(fallback_selector, timeout=5)
+                        full_text = version_elem.text.strip()
+                        match = re.search(r'(\d{1,2}\.\d{1,2})', full_text)
+                        if match:
+                            version_text = match.group(1)
+                    except Exception:
+                        pass
 
             if version_text:
                 self.os_version = version_text
@@ -756,10 +875,11 @@ class FritzBox:
                 return self.os_version
             else:
                 print("❌ Keine Firmware-Version gefunden auf der Update-Seite.")
-                return False  # KORREKTUR: Bei Fehler False zurückgeben
+                return False
+
         except Exception as e:
-            print(f"❌ Fehler beim Ermitteln der Firmware-Version: ")
-            return False  # KORREKTUR: Bei Fehler False zurückgeben
+            print(f"❌ Fehler beim Ermitteln der Firmware-Version: {e}")
+            return False
 
     @require_login
     def get_box_model(self) -> str | bool:
@@ -806,7 +926,6 @@ class FritzBox:
                         return self.box_model
                 except Exception:
                     continue
-
 
         print("❌ Box-Modell konnte nicht identifiziert werden.")
         self.box_model = "UNKNOWN"
@@ -868,7 +987,7 @@ class FritzBox:
                             found_and_clicked_any = True
                             time.sleep(2)
                     except Exception:
-                        pass # Element nicht gefunden oder Klick fehlgeschlagen, Wizard ist wohl durch
+                        pass  # Element nicht gefunden oder Klick fehlgeschlagen, Wizard ist wohl durch
 
                 if found_and_clicked_any:
                     return True
@@ -944,12 +1063,18 @@ class FritzBox:
                     "Konnte 'Funkkanal' nicht klicken.")
                 time.sleep(15)
 
-                # --- Logik für MODERNE UI (div-basiert) ---
                 try:
                     self.browser.klicken('//button[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
                 except Exception as e:
                     print(e)
                     pass
+                try:
+                    self.browser.klicken('//a[contains(text(),"WLAN einschalten")]', timeout=5, versuche=1)
+                except Exception as e:
+                    print(e)
+                    pass
+
+                # --- Logik für MODERNE UI (div-basiert) ---
 
                 modern_row_xpath = '//div[@class="flexRow" and .//div[@prefid="rssi"]]'
                 num_modern_rows = len(self.browser.driver.find_elements(By.XPATH, modern_row_xpath))
@@ -994,9 +1119,9 @@ class FritzBox:
 
                             signal_title = cols[0].get_attribute("title").strip()
                             name = cols[1].text.strip()
-                            freq = cols[2].text.strip() # this is apparently freq in the old Version
+                            freq = cols[2].text.strip()  # this is apparently freq in the old Version
                             mac = cols[3].text.strip()
-                            channel = cols[4].text.strip() # fragwürdig
+                            channel = cols[4].text.strip()  # fragwürdig
                             self.print_wlan_entry(i, name, freq, channel, mac, signal_title)
                             self.wlan_scan_results.append({
                                 "name": name,
@@ -1090,7 +1215,7 @@ class FritzBox:
             print("📤 Firmware wird hochgeladen... Die Box startet nun neu.")
             # --- NEU: Aktiv auf die Box warten ---
             # Wir geben ihr großzügig Zeit (40 Versuche * 10s = 400s)
-            time.sleep(50)
+            time.sleep(60)
             if self.warte_auf_erreichbarkeit(versuche=40, delay=10):
                 # this needs login check for
                 print("✅ Box ist nach dem Update wieder erreichbar.")

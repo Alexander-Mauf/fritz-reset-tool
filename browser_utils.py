@@ -26,7 +26,7 @@ class Browser:
             raise TypeError("Der übergebene Treiber muss eine Instanz von selenium.webdriver.Chrome sein.")
         self.driver = driver
 
-    def sicher_warten(self, locator, timeout=10, sichtbar=True, mehrere=False):
+    def sicher_warten(self, locator, timeout=10, verbose=False, sichtbar=True, mehrere=False):
         """
         Wartet sicher auf ein Element oder Elemente.
         Locator kann ein (By.XPATH, "xpath_string") Tupel oder ein reiner XPath-String sein.
@@ -49,7 +49,11 @@ class Browser:
         except Exception as e:
             # Hier keine Fritzbox-spezifische Login-Prüfung, da dies eine generische Browser-Klasse ist.
             # Die Login-Prüfung erfolgt in der FritzBox-Klasse, die diese Browser-Methoden nutzt.
-            raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden)")
+            if verbose:
+                raise Exception(f"❌ Fehler beim Warten auf Element {locator} (Timeout/Nicht gefunden)")
+            else:
+                raise Exception
+
 
     def klicken(self, xpath, timeout=15, versuche=3, verbose=False):
         """
@@ -58,23 +62,24 @@ class Browser:
         """
         for i in range(versuche):
             try:
-                element = self.sicher_warten(xpath, timeout)
+                element = self.sicher_warten(xpath, timeout, verbose=verbose)
                 try:
                     element.click()
                     return True
                 except Exception as e:
                     # Direkter Klick fehlgeschlagen, versuche JavaScript-Klick
-                    print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}) für {xpath}")
+                    if verbose:
+                        print(f"⚠️ Klick direkt nicht möglich (Versuch {i + 1}) für {xpath}")
                     self.driver.execute_script("arguments[0].click();", element)
                     return True # JavaScript-Klick war (wahrscheinlich) erfolgreich
             except Exception as e:
                 if verbose:
                     print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1})")
-                    time.sleep(1) # Kurze Pause vor dem nächsten Versuch
+                    pass
                 else:
-                    print(f"⚠️ Element {xpath} beim Warten nicht gefunden (Versuch {i + 1})")
-                    time.sleep(1)  # Kurze Pause vor dem nächsten Versuch
-        print(f"❌ Element {xpath} nicht klickbar nach {versuche} Versuchen.")
+                    pass
+        if verbose:
+            print(f"❌ Element {xpath} nicht klickbar nach {versuche} Versuchen.")
         return False
 
     def schreiben(self, xpath, text, timeout=30):

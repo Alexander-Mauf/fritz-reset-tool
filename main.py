@@ -1,5 +1,5 @@
 # main.py
-from workflow_orchestrator import WorkflowOrchestrator
+
 import time
 
 def main():
@@ -10,6 +10,7 @@ def main():
     print("🚀 Starte FritzBox-Verwaltungsprogramm...")
 
     # Instanz des Workflow-Orchestrators erstellen
+    from workflow_orchestrator import WorkflowOrchestrator
     orchestrator = WorkflowOrchestrator()
 
     try:

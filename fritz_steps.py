@@ -402,6 +402,7 @@ def tim_factory_reset(driver):
                 if "OK" in btn.text:
                     btn.click()
                     return True
+
             return False
 
         WebDriverWait(driver, 180).until(finde_und_klicke_ok)
