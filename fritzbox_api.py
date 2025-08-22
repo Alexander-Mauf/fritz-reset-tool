@@ -719,40 +719,29 @@ class FritzBox:
             shadow3.querySelector('js3-button[level="critical"]').click();
             """)
 
-            ## HIER MUSS DER PHYSISCHE KNOPF GEDRÜCKT WERDEN
-            while not self._wait_for_physical_button():
-                pass
+            for attempt in range(5):
+                return_value = self.browser.driver.execute_script("""
+                    const contentBox = document.querySelector('#js3ContentBox');
+                    if (!contentBox) return false;
+                    const shadow1 = contentBox.shadowRoot;
+                    const btn = shadow1.querySelector('button[title="OK"]');
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                    return false;
+                """)
 
-            tile_clicked = self.browser.driver.execute_script("""
-            shadow1.querySelector('js3-button[aria-label="OK"]').click();
-            //shadow3.querySelector('js3-button[level="critical"]').click();
-            """)
-            if tile_clicked:
-                print(f"✅ JS3 Workflow: Tile geklickt via querySelector: {tile_selector}")
-            else:
-                print("❌ Tile konnte nicht geklickt werden.")
-                return False
+                if return_value:
+                    print(f"Ok-Button gefunden und geklickt: {return_value}")
+                    return return_value
+                else:
+                    print(f"Versuch {attempt + 1}: OK Button im JS noch nicht gefunden.")
+                    time.sleep(2)
 
-            # --- Schritt 2: Warten auf Dialog (dynamisch erzeugt) ---
-            dialog_selector = 'js3-dialog js3-button button'
-            for _ in range(10):  # max 10x warten, je 0.5s
-                dialog_elem = self.browser.driver.execute_script(
-                    f"return document.querySelector('{dialog_selector}')"
-                )
-                if dialog_elem:
-                    print("✅ JS3 Workflow: Dialog gefunden.")
-                    break
-                time.sleep(0.5)
-            else:
-                print("❌ JS3 Workflow: Dialog-Knopf wurde nicht gefunden.")
-                return False
+            print("OK Button konnte nach 5 Versuchen nicht gefunden/geclicked werden.")
+            return return_value
 
-            # --- Schritt 3: Dialog-Knopf klicken ---
-            self.browser.driver.execute_script(f"document.querySelector('{dialog_selector}').click();")
-            print("✅ JS3 Workflow: Dialog-Knopf geklickt.")
-
-            # --- Schritt 4: Warten auf physischen Knopf ---
-            return self._wait_for_physical_button()
 
         except Exception as e:
             print(f"❌ JS3 Workflow fehlgeschlagen: {e}")
