@@ -402,7 +402,6 @@ def tim_factory_reset(driver):
                 if "OK" in btn.text:
                     btn.click()
                     return True
-            # @todo JS exectution to click on JS ok-button in Version 08.20
 
             return False
 
